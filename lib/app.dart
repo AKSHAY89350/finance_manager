@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'utils/app_colors.dart';
 import 'screens/main_scaffold.dart';
+import 'screens/expense/add_expense_screen.dart';
+import 'screens/income/add_income_screen.dart';
+import 'screens/transfer/transfer_screen.dart';
 
 class FinanceApp extends StatelessWidget {
   const FinanceApp({super.key});
@@ -28,6 +31,11 @@ class FinanceApp extends StatelessWidget {
       theme: _buildLightTheme(),
       darkTheme: _buildDarkTheme(),
       themeMode: ThemeMode.light, // Can be toggled from settings
+      routes: {
+        '/add-expense': (_) => const AddExpenseScreen(),
+        '/add-income': (_) => const AddIncomeScreen(),
+        '/transfer': (_) => const TransferScreen(),
+      },
       home: const MainScaffold(),
     );
   }
