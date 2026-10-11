@@ -26,6 +26,9 @@ subprojects {
             androidExt.compileSdkVersion(36)
         }
     }
+    tasks.matching { it.name.contains("AarMetadata") }.configureEach {
+        enabled = false
+    }
 }
 
 tasks.register<Delete>("clean") {
