@@ -20,17 +20,13 @@ subprojects {
 }
 
 subprojects {
-    plugins.withId("com.android.library") {
-        val androidExt = project.extensions.findByName("android")
-        if (androidExt is com.android.build.gradle.BaseExtension) {
-            androidExt.compileSdkVersion(36)
+    afterEvaluate {
+        if (project.hasProperty("android")) {
+            val android = project.property("android")
+            if (android is com.android.build.gradle.BaseExtension) {
+                android.compileSdkVersion(36)
+            }
         }
-    }
-}
-
-allprojects {
-    tasks.matching { it.name.contains("AarMetadata") }.configureEach {
-        enabled = false
     }
 }
 
