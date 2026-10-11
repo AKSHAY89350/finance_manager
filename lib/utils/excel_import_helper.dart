@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:excel/excel.dart';
+import 'package:intl/intl.dart';
 import '../db/database_helper.dart';
 
 class ImportResult {
@@ -21,6 +22,16 @@ class ImportResult {
 class ExcelImportHelper {
   ExcelImportHelper._();
 
+  static Sheet? _findSheet(Excel excel, String name) {
+    final clean = name.trim().toLowerCase();
+    for (final entry in excel.tables.entries) {
+      if (entry.key.trim().toLowerCase() == clean) {
+        return entry.value;
+      }
+    }
+    return null;
+  }
+
   /// Parses bytes from an uploaded Excel (.xlsx) file matching the user's Excel schema
   static Future<ImportResult> importExcelFile(Uint8List bytes) async {
     try {
@@ -29,8 +40,20 @@ class ExcelImportHelper {
       int importedIncome = 0;
       int importedTransfers = 0;
 
+      // Track known banks to automatically create new banks found in sheet
+      final existingBanks = await DatabaseHelper.instance.getAllBanks();
+      final bankNames = existingBanks.map((b) => b['name'] as String).toSet();
+
+      Future<void> ensureBankExists(String bank) async {
+        final trimmed = bank.trim();
+        if (trimmed.isNotEmpty && !bankNames.contains(trimmed)) {
+          await DatabaseHelper.instance.insertBank(trimmed, 0.0);
+          bankNames.add(trimmed);
+        }
+      }
+
       // ── 1. IMPORT EXPENSES ─────────────────────────────────────────
-      final expenseSheet = excel.tables['Expenses'];
+      final expenseSheet = _findSheet(excel, 'Expenses');
       if (expenseSheet != null && expenseSheet.rows.length > 1) {
         // Headers: Date, Category, Sub-Category, Description, Amount, Bank
         for (int i = 1; i < expenseSheet.rows.length; i++) {
@@ -47,8 +70,8 @@ class ExcelImportHelper {
           final bank = row.length > 5 ? _cellString(row[5]) : 'HSBC';
 
           if (amount > 0) {
-            // Standardize Date format to YYYY-MM-DD
             final formattedDate = _standardizeDate(dateVal);
+            await ensureBankExists(bank);
 
             await DatabaseHelper.instance.insertExpense({
               'date': formattedDate,
@@ -64,7 +87,7 @@ class ExcelImportHelper {
       }
 
       // ── 2. IMPORT EXTRA CREDIT (INCOME) ─────────────────────────────
-      final incomeSheet = excel.tables['Extra Credit'];
+      final incomeSheet = _findSheet(excel, 'Extra Credit');
       if (incomeSheet != null && incomeSheet.rows.length > 1) {
         // Headers: Date, User Name, Amount, Mode, Bank
         for (int i = 1; i < incomeSheet.rows.length; i++) {
@@ -81,6 +104,8 @@ class ExcelImportHelper {
 
           if (amount > 0) {
             final formattedDate = _standardizeDate(dateVal);
+            await ensureBankExists(bank);
+
             await DatabaseHelper.instance.insertIncome({
               'date': formattedDate,
               'user_name': userName?.isEmpty == true ? null : userName,
@@ -94,7 +119,7 @@ class ExcelImportHelper {
       }
 
       // ── 3. IMPORT TRANSFERS ─────────────────────────────────────────
-      final transferSheet = excel.tables['Transfers'];
+      final transferSheet = _findSheet(excel, 'Transfers');
       if (transferSheet != null && transferSheet.rows.length > 1) {
         // Headers: Date, From Bank, To Bank, Amount, Description
         for (int i = 1; i < transferSheet.rows.length; i++) {
@@ -111,6 +136,9 @@ class ExcelImportHelper {
 
           if (amount > 0 && fromBank.isNotEmpty && toBank.isNotEmpty && fromBank != toBank) {
             final formattedDate = _standardizeDate(dateVal);
+            await ensureBankExists(fromBank);
+            await ensureBankExists(toBank);
+
             await DatabaseHelper.instance.insertTransfer({
               'date': formattedDate,
               'from_bank': fromBank,
@@ -148,10 +176,38 @@ class ExcelImportHelper {
   }
 
   static String _standardizeDate(String raw) {
-    // If date is like '2026-09-01 00:00:00'
-    if (raw.contains(' ')) {
-      return raw.split(' ').first;
+    String cleaned = raw.trim();
+
+    // 1. If date is Excel serial number (e.g. 45678)
+    final serial = double.tryParse(cleaned);
+    if (serial != null && serial > 20000 && serial < 80000) {
+      final baseDate = DateTime(1899, 12, 30);
+      final date = baseDate.add(Duration(days: serial.toInt()));
+      return DateFormat('yyyy-MM-dd').format(date);
     }
-    return raw;
+
+    // 2. If date has time attached (e.g. '2026-09-01 00:00:00')
+    if (cleaned.contains(' ')) {
+      cleaned = cleaned.split(' ').first;
+    }
+
+    // 3. Try standard formats
+    final formats = [
+      'yyyy-MM-dd',
+      'dd-MM-yyyy',
+      'dd/MM/yyyy',
+      'yyyy/MM/dd',
+      'd-M-yyyy',
+      'd/M/yyyy',
+    ];
+
+    for (final fmt in formats) {
+      try {
+        final parsed = DateFormat(fmt).parseStrict(cleaned);
+        return DateFormat('yyyy-MM-dd').format(parsed);
+      } catch (_) {}
+    }
+
+    return cleaned;
   }
 }

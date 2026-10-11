@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../db/database_helper.dart';
 import '../../providers/bank_provider.dart';
 import '../../providers/expense_provider.dart';
+import '../../providers/income_provider.dart';
+import '../../providers/transfer_provider.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/constants.dart';
 import '../../utils/excel_import_helper.dart';
@@ -46,11 +48,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             onPressed: () async {
               final newBal = double.tryParse(controller.text.trim());
               if (newBal != null) {
+                final nav = Navigator.of(ctx);
+                final messenger = ScaffoldMessenger.of(context);
                 await DatabaseHelper.instance.updateBankBalance(bankId, newBal);
                 await ref.read(bankProvider.notifier).loadBanks();
                 if (mounted) {
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  nav.pop();
+                  messenger.showSnackBar(
                     SnackBar(content: Text('Updated starting balance for $bankName')),
                   );
                 }
@@ -94,10 +98,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               final name = nameCtrl.text.trim();
               final bal = double.tryParse(balCtrl.text.trim()) ?? 0.0;
               if (name.isNotEmpty) {
+                final nav = Navigator.of(ctx);
+                final messenger = ScaffoldMessenger.of(context);
                 await ref.read(bankProvider.notifier).addBank(name, bal);
                 if (mounted) {
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  nav.pop();
+                  messenger.showSnackBar(
                     SnackBar(content: Text('Added $name')),
                   );
                 }
@@ -180,9 +186,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
       final importRes = await ExcelImportHelper.importExcelFile(bytes);
 
-      // Refresh live banks and expenses
+      // Refresh live banks, expenses, incomes, and transfers
       await ref.read(bankProvider.notifier).loadBanks();
       await ref.read(expenseProvider.notifier).loadExpenses();
+      await ref.read(incomeProvider.notifier).loadIncome();
+      await ref.read(transferProvider.notifier).loadTransfers();
 
       if (mounted) {
         if (importRes.isSuccess) {
@@ -235,11 +243,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.expense),
             onPressed: () async {
+              final nav = Navigator.of(ctx);
+              final messenger = ScaffoldMessenger.of(context);
               await DatabaseHelper.instance.clearAllData();
               await ref.read(bankProvider.notifier).loadBanks();
+              await ref.read(expenseProvider.notifier).loadExpenses();
+              await ref.read(incomeProvider.notifier).loadIncome();
+              await ref.read(transferProvider.notifier).loadTransfers();
               if (mounted) {
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
+                nav.pop();
+                messenger.showSnackBar(
                   const SnackBar(content: Text('All transactions deleted')),
                 );
               }
@@ -362,12 +375,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
                 const SizedBox(height: 16),
                 _sectionHeader('About Application'),
-                Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+                const Card(
+                  margin: EdgeInsets.symmetric(horizontal: 16, vertical: 3),
                   child: ListTile(
-                    leading: const Icon(Icons.info_outline_rounded, color: AppColors.textSecondary),
-                    title: const Text(AppConstants.appName),
-                    subtitle: const Text('Version 1.0.0 • 100% Offline (SQLite Engine)'),
+                    leading: Icon(Icons.info_outline_rounded, color: AppColors.textSecondary),
+                    title: Text(AppConstants.appName),
+                    subtitle: Text('Version 1.0.0 • 100% Offline (SQLite Engine)'),
                   ),
                 ),
                 const SizedBox(height: 24),

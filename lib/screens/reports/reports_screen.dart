@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../db/database_helper.dart';
+import '../../providers/expense_provider.dart';
+import '../../screens/main_scaffold.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/constants.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/category_pie_chart.dart';
 import '../../widgets/monthly_bar_chart.dart';
 
-class ReportsScreen extends StatefulWidget {
+class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({super.key});
 
   @override
-  State<ReportsScreen> createState() => _ReportsScreenState();
+  ConsumerState<ReportsScreen> createState() => _ReportsScreenState();
 }
 
-class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProviderStateMixin {
+class _ReportsScreenState extends ConsumerState<ReportsScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   int _selectedYear = DateTime.now().year;
   int _selectedMonth = DateTime.now().month;
@@ -72,8 +75,28 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
     }
   }
 
+  List<int> _availableYears() {
+    final curYear = DateTime.now().year;
+    final years = List.generate(7, (i) => curYear - 4 + i);
+    if (!years.contains(_selectedYear)) {
+      years.add(_selectedYear);
+      years.sort();
+    }
+    return years;
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Auto-refresh when user navigates to Reports tab or when expenses change
+    ref.listen(selectedTabProvider, (prev, next) {
+      if (next == 2) {
+        _loadReportData();
+      }
+    });
+    ref.listen(expenseProvider, (prev, next) {
+      _loadReportData();
+    });
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -102,6 +125,8 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
   }
 
   Widget _buildCategoryChartView() {
+    final years = _availableYears();
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -126,7 +151,7 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
             ),
             DropdownButton<int>(
               value: _selectedYear,
-              items: [2024, 2025, 2026, 2027].map((y) {
+              items: years.map((y) {
                 return DropdownMenuItem(value: y, child: Text('$y'));
               }).toList(),
               onChanged: (val) {
@@ -221,6 +246,8 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
   }
 
   Widget _buildMonthlyMatrixView() {
+    final years = _availableYears();
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -233,7 +260,7 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
             ),
             DropdownButton<int>(
               value: _selectedYear,
-              items: [2024, 2025, 2026, 2027].map((y) {
+              items: years.map((y) {
                 return DropdownMenuItem(value: y, child: Text('$y'));
               }).toList(),
               onChanged: (val) {

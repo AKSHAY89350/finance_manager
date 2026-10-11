@@ -72,8 +72,8 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> {
     final picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2050),
     );
     if (picked != null) {
       setState(() {
@@ -124,6 +124,16 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bankState = ref.watch(bankProvider);
+    final bankList = bankState.maybeWhen(
+      data: (items) => items.map((i) => i.bank.name).toList(),
+      orElse: () => AppConstants.defaultBanks,
+    );
+    final allBanks = {...bankList, _selectedBank}.toList();
+    if (!allBanks.contains(_selectedBank) && allBanks.isNotEmpty) {
+      _selectedBank = allBanks.first;
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.initialExpense == null ? 'Add Expense' : 'Edit Expense'),
@@ -170,7 +180,8 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> {
 
                     // Category Dropdown
                     DropdownButtonFormField<String>(
-                      value: _selectedCategory,
+                      key: ValueKey('category_$_selectedCategory'),
+                      initialValue: _selectedCategory,
                       decoration: const InputDecoration(labelText: 'Category'),
                       items: AppConstants.categories.map((c) {
                         return DropdownMenuItem(
@@ -192,7 +203,10 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> {
                     // Dynamic Sub-Category Dropdown
                     if (_subCategories.isNotEmpty)
                       DropdownButtonFormField<String>(
-                        value: _selectedSubCategory,
+                        key: ValueKey('subcat_${_selectedCategory}_$_selectedSubCategory'),
+                        initialValue: _subCategories.contains(_selectedSubCategory)
+                            ? _selectedSubCategory
+                            : (_subCategories.isNotEmpty ? _subCategories.first : null),
                         decoration: const InputDecoration(labelText: 'Sub-Category'),
                         items: _subCategories.map((sc) {
                           return DropdownMenuItem(value: sc, child: Text(sc));
@@ -205,11 +219,12 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> {
                       ),
                     if (_subCategories.isNotEmpty) const SizedBox(height: 16),
 
-                    // Bank Selector
+                    // Bank Selector (Dynamic from DB)
                     DropdownButtonFormField<String>(
-                      value: _selectedBank,
+                      key: ValueKey('bank_$_selectedBank'),
+                      initialValue: _selectedBank,
                       decoration: const InputDecoration(labelText: 'Debited Bank'),
-                      items: AppConstants.defaultBanks.map((b) {
+                      items: allBanks.map((b) {
                         return DropdownMenuItem(
                           value: b,
                           child: Row(

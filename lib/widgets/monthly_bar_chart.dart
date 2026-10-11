@@ -70,7 +70,7 @@ class MonthlyBarChart extends StatelessWidget {
               barRods: [
                 BarChartRodData(
                   toY: val,
-                  gradient: LinearGradient(
+                  gradient: const LinearGradient(
                     colors: [AppColors.primary, AppColors.primaryLight],
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,

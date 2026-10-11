@@ -1,18 +1,21 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../db/database_helper.dart';
+import '../../providers/expense_provider.dart';
+import '../../screens/main_scaffold.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/constants.dart';
 import '../../utils/formatters.dart';
 
-class InvestmentScreen extends StatefulWidget {
+class InvestmentScreen extends ConsumerStatefulWidget {
   const InvestmentScreen({super.key});
 
   @override
-  State<InvestmentScreen> createState() => _InvestmentScreenState();
+  ConsumerState<InvestmentScreen> createState() => _InvestmentScreenState();
 }
 
-class _InvestmentScreenState extends State<InvestmentScreen> {
+class _InvestmentScreenState extends ConsumerState<InvestmentScreen> {
   int _selectedYear = DateTime.now().year;
   bool _isLoading = true;
 
@@ -49,11 +52,11 @@ class _InvestmentScreenState extends State<InvestmentScreen> {
       final count = (item['txn_count'] as int?) ?? 0;
       txns += count;
 
-      if (sub.contains('SIP')) {
+      if (sub.contains('SIP') || sub.contains('MUTUAL') || sub.contains('STOCK') || sub.contains('SHARE')) {
         sip += amt;
-      } else if (sub.contains('FD') || sub.contains('RD')) {
+      } else if (sub.contains('FD') || sub.contains('RD') || sub.contains('GOLD') || sub.contains('SGB')) {
         fdRd += amt;
-      } else if (sub.contains('PPF') || sub.contains('NPS')) {
+      } else {
         ppf += amt;
       }
     }
@@ -72,8 +75,30 @@ class _InvestmentScreenState extends State<InvestmentScreen> {
     }
   }
 
+  List<int> _availableYears() {
+    final curYear = DateTime.now().year;
+    final years = List.generate(7, (i) => curYear - 4 + i);
+    if (!years.contains(_selectedYear)) {
+      years.add(_selectedYear);
+      years.sort();
+    }
+    return years;
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Auto-refresh when switching to Invest tab (index 3) or when expenses update
+    ref.listen(selectedTabProvider, (prev, next) {
+      if (next == 3) {
+        _loadInvestmentData();
+      }
+    });
+    ref.listen(expenseProvider, (prev, next) {
+      _loadInvestmentData();
+    });
+
+    final years = _availableYears();
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -86,7 +111,7 @@ class _InvestmentScreenState extends State<InvestmentScreen> {
               underline: const SizedBox.shrink(),
               iconEnabledColor: Colors.white,
               value: _selectedYear,
-              items: [2024, 2025, 2026, 2027].map((y) {
+              items: years.map((y) {
                 return DropdownMenuItem(
                   value: y,
                   child: Text('$y', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -156,12 +181,12 @@ class _InvestmentScreenState extends State<InvestmentScreen> {
 
                   const SizedBox(height: 16),
 
-                  // Key Asset Breakdown Stats
+                  // Key Asset Breakdown Stats (All investments grouped)
                   Row(
                     children: [
                       Expanded(
                         child: _StatCard(
-                          label: 'TOTAL SIPs',
+                          label: 'SIP & STOCKS',
                           amount: _totalSip,
                           icon: Icons.repeat_rounded,
                           color: const Color(0xFF0284C7),
@@ -170,7 +195,7 @@ class _InvestmentScreenState extends State<InvestmentScreen> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: _StatCard(
-                          label: 'FD & RD',
+                          label: 'FD, RD & GOLD',
                           amount: _totalFdRd,
                           icon: Icons.account_balance_rounded,
                           color: const Color(0xFF0D9488),
@@ -179,7 +204,7 @@ class _InvestmentScreenState extends State<InvestmentScreen> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: _StatCard(
-                          label: 'PPF / RETIRE',
+                          label: 'PPF & OTHER',
                           amount: _totalPpfRetirement,
                           icon: Icons.shield_outlined,
                           color: const Color(0xFFD97706),
@@ -253,46 +278,68 @@ class _InvestmentScreenState extends State<InvestmentScreen> {
                   const SizedBox(height: 8),
 
                   if (_monthlyRows.isEmpty)
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.divider)),
-                      child: const Center(child: Text('No monthly investment ledger for this year', style: TextStyle(color: AppColors.textSecondary))),
+                    const Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(20.0),
+                        child: Center(child: Text('No monthly investment data logged yet')),
+                      ),
                     )
                   else
-                    ..._monthlyRows.map((row) {
-                      final monthIndex = (row['month'] as int) - 1;
-                      final monthName = monthIndex >= 0 && monthIndex < 12 ? AppConstants.monthNames[monthIndex] : 'Month ${row['month']}';
-                      final sub = row['sub_category'] as String? ?? 'General';
-                      final total = (row['total'] as num).toDouble();
-
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 6),
-                        child: ListTile(
-                          leading: const CircleAvatar(
-                            backgroundColor: Color(0xFFF3E8FF),
-                            child: Icon(Icons.trending_up, color: AppColors.investment),
-                          ),
-                          title: Text('$monthName • $sub', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                          trailing: Text(
-                            AppFormatters.currency(total),
-                            style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.investment, fontSize: 14),
-                          ),
-                        ),
-                      );
-                    }),
-                  const SizedBox(height: 16),
+                    ..._buildMonthlyCards(),
                 ],
               ),
             ),
     );
   }
 
+  List<Widget> _buildMonthlyCards() {
+    final Map<int, List<Map<String, dynamic>>> byMonth = {};
+    for (final row in _monthlyRows) {
+      final m = row['month'] as int;
+      byMonth.putIfAbsent(m, () => []).add(row);
+    }
+
+    final sortedMonths = byMonth.keys.toList()..sort();
+
+    return sortedMonths.map((m) {
+      final rows = byMonth[m]!;
+      final monthName = (m >= 1 && m <= 12) ? AppConstants.monthNames[m - 1] : 'Month $m';
+      final total = rows.fold<double>(0.0, (sum, r) => sum + (r['total'] as num).toDouble());
+
+      return Card(
+        margin: const EdgeInsets.only(bottom: 8),
+        child: ExpansionTile(
+          leading: const CircleAvatar(
+            backgroundColor: Color(0x1F7C3AED),
+            child: Icon(Icons.calendar_month_rounded, color: AppColors.investment, size: 20),
+          ),
+          title: Text(monthName, style: const TextStyle(fontWeight: FontWeight.bold)),
+          subtitle: Text('${rows.length} asset classes funded', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          trailing: Text(
+            AppFormatters.currency(total),
+            style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.investment, fontSize: 14),
+          ),
+          children: rows.map((r) {
+            final sub = r['sub_category'] ?? 'Investment';
+            final amt = (r['total'] as num).toDouble();
+            return ListTile(
+              dense: true,
+              leading: const Icon(Icons.arrow_right_rounded, color: AppColors.investment),
+              title: Text(sub, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+              trailing: Text(AppFormatters.currency(amt), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            );
+          }).toList(),
+        ),
+      );
+    }).toList();
+  }
+
   List<PieChartSectionData> _buildAllocationSections() {
     final colors = [
-      const Color(0xFF7C3AED),
       const Color(0xFF0284C7),
       const Color(0xFF0D9488),
       const Color(0xFFD97706),
+      const Color(0xFF7C3AED),
       const Color(0xFFEC4899),
       const Color(0xFF10B981),
     ];

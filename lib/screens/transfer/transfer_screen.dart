@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/transfer.dart';
 import '../../providers/bank_provider.dart';
+import '../../providers/transfer_provider.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/constants.dart';
 import '../../utils/formatters.dart';
-import '../../db/database_helper.dart';
 
 class TransferScreen extends ConsumerStatefulWidget {
   const TransferScreen({super.key});
@@ -35,8 +35,8 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
     final picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2050),
     );
     if (picked != null) {
       setState(() => _selectedDate = picked);
@@ -71,7 +71,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
       description: _descController.text.trim().isEmpty ? null : _descController.text.trim(),
     );
 
-    await DatabaseHelper.instance.insertTransfer(transfer.toMap());
+    await ref.read(transferProvider.notifier).addTransfer(transfer);
     await ref.read(bankProvider.notifier).loadBanks();
 
     if (mounted) {
@@ -84,6 +84,19 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bankState = ref.watch(bankProvider);
+    final bankList = bankState.maybeWhen(
+      data: (items) => items.map((i) => i.bank.name).toList(),
+      orElse: () => AppConstants.defaultBanks,
+    );
+    final allBanks = {...bankList, _fromBank, _toBank}.toList();
+    if (!allBanks.contains(_fromBank) && allBanks.isNotEmpty) {
+      _fromBank = allBanks.first;
+    }
+    if (!allBanks.contains(_toBank) && allBanks.length > 1) {
+      _toBank = allBanks[1];
+    }
+
     return Scaffold(
       appBar: AppBar(title: const Text('Bank Transfer')),
       body: _isLoading
@@ -123,9 +136,10 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
-                      value: _fromBank,
+                      key: ValueKey('from_bank_$_fromBank'),
+                      initialValue: _fromBank,
                       decoration: const InputDecoration(labelText: 'From Bank (Debited)'),
-                      items: AppConstants.defaultBanks.map((b) {
+                      items: allBanks.map((b) {
                         return DropdownMenuItem(value: b, child: Text(b));
                       }).toList(),
                       onChanged: (val) {
@@ -134,9 +148,10 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
-                      value: _toBank,
+                      key: ValueKey('to_bank_$_toBank'),
+                      initialValue: _toBank,
                       decoration: const InputDecoration(labelText: 'To Bank (Credited)'),
-                      items: AppConstants.defaultBanks.map((b) {
+                      items: allBanks.map((b) {
                         return DropdownMenuItem(value: b, child: Text(b));
                       }).toList(),
                       onChanged: (val) {

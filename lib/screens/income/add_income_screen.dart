@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/extra_credit.dart';
 import '../../providers/bank_provider.dart';
+import '../../providers/income_provider.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/constants.dart';
 import '../../utils/formatters.dart';
-import '../../db/database_helper.dart';
 
 class AddIncomeScreen extends ConsumerStatefulWidget {
   const AddIncomeScreen({super.key});
@@ -35,8 +35,8 @@ class _AddIncomeScreenState extends ConsumerState<AddIncomeScreen> {
     final picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2050),
     );
     if (picked != null) {
       setState(() => _selectedDate = picked);
@@ -64,7 +64,7 @@ class _AddIncomeScreenState extends ConsumerState<AddIncomeScreen> {
       bank: _selectedBank,
     );
 
-    await DatabaseHelper.instance.insertIncome(income.toMap());
+    await ref.read(incomeProvider.notifier).addIncome(income);
     await ref.read(bankProvider.notifier).loadBanks();
 
     if (mounted) {
@@ -77,6 +77,16 @@ class _AddIncomeScreenState extends ConsumerState<AddIncomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bankState = ref.watch(bankProvider);
+    final bankList = bankState.maybeWhen(
+      data: (items) => items.map((i) => i.bank.name).toList(),
+      orElse: () => AppConstants.defaultBanks,
+    );
+    final allBanks = {...bankList, _selectedBank}.toList();
+    if (!allBanks.contains(_selectedBank) && allBanks.isNotEmpty) {
+      _selectedBank = allBanks.first;
+    }
+
     return Scaffold(
       appBar: AppBar(title: const Text('Add Income / Credit')),
       body: _isLoading
@@ -116,7 +126,8 @@ class _AddIncomeScreenState extends ConsumerState<AddIncomeScreen> {
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
-                      value: _selectedMode,
+                      key: ValueKey('mode_$_selectedMode'),
+                      initialValue: _selectedMode,
                       decoration: const InputDecoration(labelText: 'Income Mode / Type'),
                       items: AppConstants.incomeModes.map((m) {
                         return DropdownMenuItem(value: m, child: Text(m));
@@ -127,9 +138,10 @@ class _AddIncomeScreenState extends ConsumerState<AddIncomeScreen> {
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
-                      value: _selectedBank,
+                      key: ValueKey('bank_$_selectedBank'),
+                      initialValue: _selectedBank,
                       decoration: const InputDecoration(labelText: 'Credited Bank'),
-                      items: AppConstants.defaultBanks.map((b) {
+                      items: allBanks.map((b) {
                         return DropdownMenuItem(
                           value: b,
                           child: Row(
