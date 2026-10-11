@@ -30,8 +30,9 @@ dependencies:
   # Excel Export
   excel: ^4.0.2
 
-  # File Sharing (WhatsApp, Email, Drive, etc.)
+  # File Sharing & Picking
   share_plus: ^9.0.0
+  file_picker: ^8.0.0
 
   # Unique IDs
   uuid: ^4.4.0

@@ -1,9 +1,14 @@
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../db/database_helper.dart';
 import '../../providers/bank_provider.dart';
+import '../../providers/expense_provider.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/constants.dart';
+import '../../utils/excel_import_helper.dart';
 import '../../utils/export_helper.dart';
 import '../../utils/formatters.dart';
 
@@ -145,6 +150,78 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  Future<void> _handleExcelImport() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx'],
+        withData: true,
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final file = result.files.first;
+      Uint8List? bytes = file.bytes;
+      if (bytes == null && file.path != null) {
+        final f = File(file.path!);
+        bytes = await f.readAsBytes();
+      }
+
+      if (bytes == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not read the selected file')),
+          );
+        }
+        return;
+      }
+
+      setState(() => _isExporting = true);
+
+      final importRes = await ExcelImportHelper.importExcelFile(bytes);
+
+      // Refresh live banks and expenses
+      await ref.read(bankProvider.notifier).loadBanks();
+      await ref.read(expenseProvider.notifier).loadExpenses();
+
+      if (mounted) {
+        if (importRes.isSuccess) {
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Excel Import Successful!'),
+              content: Text(
+                'Successfully imported:\n'
+                '• ${importRes.expensesCount} Expenses\n'
+                '• ${importRes.incomeCount} Income Entries\n'
+                '• ${importRes.transferCount} Bank Transfers\n\n'
+                'All live balances and reports have been updated automatically!',
+              ),
+              actions: [
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Import failed: ${importRes.error}')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error choosing file: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
+  }
+
   void _showClearDataConfirmation() {
     showDialog(
       context: context,
@@ -239,7 +316,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
 
                 const SizedBox(height: 16),
-                _sectionHeader('Data Export & Backup (100% Offline)'),
+                _sectionHeader('Data Export & Import (100% Offline)'),
+                Card(
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+                  child: ListTile(
+                    leading: const Icon(Icons.file_upload_outlined, color: AppColors.primary),
+                    title: const Text('Import from Excel (.xlsx)'),
+                    subtitle: const Text('Load your existing spreadsheet data directly into the app'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: _handleExcelImport,
+                  ),
+                ),
                 Card(
                   margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
                   child: ListTile(
