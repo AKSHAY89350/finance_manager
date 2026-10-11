@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.financeapp.finance_manager"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
