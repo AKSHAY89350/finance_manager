@@ -8,6 +8,29 @@ import 'formatters.dart';
 class ExportHelper {
   ExportHelper._();
 
+  /// Neutralizes Formula / DDE injection (CWE-1236)
+  static String _sanitizeFormula(String value) {
+    if (value.isNotEmpty &&
+        (value.startsWith('=') ||
+         value.startsWith('+') ||
+         value.startsWith('-') ||
+         value.startsWith('@') ||
+         value.startsWith('\t') ||
+         value.startsWith('\r'))) {
+      return "'$value";
+    }
+    return value;
+  }
+
+  /// Sanitizes and escapes fields for RFC 4180 CSV output
+  static String _sanitizeCsvField(String value) {
+    var str = _sanitizeFormula(value);
+    if (str.contains(',') || str.contains('"') || str.contains('\n') || str.contains('\r')) {
+      str = '"${str.replaceAll('"', '""')}"';
+    }
+    return str;
+  }
+
   /// Exports all tables to an offline Excel (.xlsx) file and triggers share/save
   static Future<String> exportToExcel() async {
     final excel = Excel.createExcel();
@@ -31,8 +54,8 @@ class ExportHelper {
         IntCellValue(e['id'] as int),
         TextCellValue(e['date'] as String),
         TextCellValue(e['category'] as String),
-        TextCellValue((e['sub_category'] as String?) ?? ''),
-        TextCellValue((e['description'] as String?) ?? ''),
+        TextCellValue(_sanitizeFormula((e['sub_category'] as String?) ?? '')),
+        TextCellValue(_sanitizeFormula((e['description'] as String?) ?? '')),
         DoubleCellValue((e['amount'] as num).toDouble()),
         TextCellValue(e['bank'] as String),
       ]);
@@ -54,7 +77,7 @@ class ExportHelper {
       incomeSheet.appendRow([
         IntCellValue(inc['id'] as int),
         TextCellValue(inc['date'] as String),
-        TextCellValue((inc['user_name'] as String?) ?? ''),
+        TextCellValue(_sanitizeFormula((inc['user_name'] as String?) ?? '')),
         DoubleCellValue((inc['amount'] as num).toDouble()),
         TextCellValue(inc['mode'] as String),
         TextCellValue(inc['bank'] as String),
@@ -80,7 +103,7 @@ class ExportHelper {
         TextCellValue(t['from_bank'] as String),
         TextCellValue(t['to_bank'] as String),
         DoubleCellValue((t['amount'] as num).toDouble()),
-        TextCellValue((t['description'] as String?) ?? ''),
+        TextCellValue(_sanitizeFormula((t['description'] as String?) ?? '')),
       ]);
     }
 
@@ -104,8 +127,8 @@ class ExportHelper {
       ]);
     }
 
-    // Save File Locally
-    final dir = await getApplicationDocumentsDirectory();
+    // Save File to temporary cache storage (CWE-312 prevention)
+    final dir = await getTemporaryDirectory();
     final fileName = 'Finance_Manager_Backup_${AppFormatters.dbDate(DateTime.now())}.xlsx';
     final file = File('${dir.path}/$fileName');
 
@@ -119,18 +142,25 @@ class ExportHelper {
     }
   }
 
-  /// Exports expenses to a CSV file
+  /// Exports expenses to a CSV file with formula neutralization & RFC 4180 escaping
   static Future<String> exportExpensesCSV() async {
     final expenses = await DatabaseHelper.instance.getAllExpenses();
     final buffer = StringBuffer();
     buffer.writeln('Date,Category,Sub-Category,Description,Amount,Bank');
 
     for (final e in expenses) {
-      final desc = ((e['description'] as String?) ?? '').replaceAll(',', ' ');
-      buffer.writeln('${e['date']},${e['category']},${e['sub_category'] ?? ""},$desc,${e['amount']},${e['bank']}');
+      final date = _sanitizeCsvField(e['date'] as String);
+      final category = _sanitizeCsvField(e['category'] as String);
+      final subCategory = _sanitizeCsvField((e['sub_category'] as String?) ?? '');
+      final desc = _sanitizeCsvField((e['description'] as String?) ?? '');
+      final amount = e['amount'].toString();
+      final bank = _sanitizeCsvField(e['bank'] as String);
+
+      buffer.writeln('$date,$category,$subCategory,$desc,$amount,$bank');
     }
 
-    final dir = await getApplicationDocumentsDirectory();
+    // Save File to temporary cache storage (CWE-312 prevention)
+    final dir = await getTemporaryDirectory();
     final fileName = 'Expenses_${AppFormatters.dbDate(DateTime.now())}.csv';
     final file = File('${dir.path}/$fileName');
     await file.writeAsString(buffer.toString());
