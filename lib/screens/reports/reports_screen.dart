@@ -39,8 +39,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> with SingleTicker
     super.dispose();
   }
 
-  Future<void> _loadReportData() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadReportData({bool showSpinner = false}) async {
+    if (showSpinner || _categoryData.isEmpty) {
+      setState(() => _isLoading = true);
+    }
 
     final start = AppFormatters.monthStart(_selectedYear, _selectedMonth);
     final end = AppFormatters.monthEnd(_selectedYear, _selectedMonth);

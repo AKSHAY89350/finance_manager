@@ -167,6 +167,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (result == null || result.files.isEmpty) return;
 
       final file = result.files.first;
+      if (file.size > 20 * 1024 * 1024) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('File exceeds 20MB limit. Please select a valid Excel file.')),
+          );
+        }
+        return;
+      }
+
       Uint8List? bytes = file.bytes;
       if (bytes == null && file.path != null) {
         final f = File(file.path!);

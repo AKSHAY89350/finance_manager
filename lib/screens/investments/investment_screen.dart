@@ -34,8 +34,10 @@ class _InvestmentScreenState extends ConsumerState<InvestmentScreen> {
     _loadInvestmentData();
   }
 
-  Future<void> _loadInvestmentData() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadInvestmentData({bool showSpinner = false}) async {
+    if (showSpinner || _allocationList.isEmpty) {
+      setState(() => _isLoading = true);
+    }
 
     final total = await DatabaseHelper.instance.getTotalInvested(year: _selectedYear);
     final alloc = await DatabaseHelper.instance.getInvestmentAllocation(year: _selectedYear);
