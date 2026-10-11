@@ -47,7 +47,8 @@ class _CategoryPieChartState extends State<CategoryPieChart> {
                       _touchedIndex = -1;
                       return;
                     }
-                    _touchedIndex = pieTouchResponse.touchedSection!.touchedSectionIndex;
+                    final idx = pieTouchResponse.touchedSection!.touchedSectionIndex;
+                    _touchedIndex = (idx >= 0 && idx < widget.categoryData.length) ? idx : -1;
                   });
                 },
               ),

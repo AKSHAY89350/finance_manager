@@ -62,8 +62,8 @@ class MainScaffold extends ConsumerWidget {
         children: _screens,
       ),
       bottomNavigationBar: _buildBottomNav(context, ref, selectedTab),
-      // FAB only on Home tab for quick "Add Expense"
-      floatingActionButton: selectedTab == 0
+      // FAB on Home and Transactions tabs for quick entry
+      floatingActionButton: (selectedTab == 0 || selectedTab == 1)
           ? _buildFAB(context, ref)
           : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,

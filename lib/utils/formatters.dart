@@ -30,16 +30,19 @@ class AppFormatters {
 
   /// Format amount as Indian currency: ₹1,50,000.00
   static String currency(double amount) {
+    if (amount.isNaN || amount.isInfinite) return '₹0.00';
     return _indianCurrency.format(amount);
   }
 
   /// Format as compact: ₹1.5L, ₹50K
   static String currencyCompact(double amount) {
+    if (amount.isNaN || amount.isInfinite) return '₹0';
     return _indianCurrencyCompact.format(amount);
   }
 
   /// Format without decimals: ₹1,50,000
   static String currencyRounded(double amount) {
+    if (amount.isNaN || amount.isInfinite) return '₹0';
     return _indianCurrencyNoDecimal.format(amount);
   }
 
@@ -89,9 +92,17 @@ class AppFormatters {
   /// Parse database date string to DateTime
   static DateTime parseDbDate(String dateStr) {
     try {
-      return DateFormat('yyyy-MM-dd').parse(dateStr);
+      final cleaned = dateStr.trim();
+      if (cleaned.contains(' ')) {
+        return DateFormat('yyyy-MM-dd').parse(cleaned.split(' ').first);
+      }
+      return DateFormat('yyyy-MM-dd').parse(cleaned);
     } catch (_) {
-      return DateTime.now();
+      try {
+        return DateTime.parse(dateStr);
+      } catch (_) {
+        return DateTime.now();
+      }
     }
   }
 

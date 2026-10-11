@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/bank_provider.dart';
 import '../../providers/expense_provider.dart';
+import '../../providers/income_provider.dart';
+import '../../providers/transfer_provider.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/bank_balance_card.dart';
@@ -26,6 +28,8 @@ class DashboardScreen extends ConsumerWidget {
             onPressed: () {
               ref.read(bankProvider.notifier).loadBanks();
               ref.read(expenseProvider.notifier).loadExpenses();
+              ref.read(incomeProvider.notifier).loadIncome();
+              ref.read(transferProvider.notifier).loadTransfers();
             },
           ),
         ],
@@ -34,6 +38,8 @@ class DashboardScreen extends ConsumerWidget {
         onRefresh: () async {
           await ref.read(bankProvider.notifier).loadBanks();
           await ref.read(expenseProvider.notifier).loadExpenses();
+          await ref.read(incomeProvider.notifier).loadIncome();
+          await ref.read(transferProvider.notifier).loadTransfers();
         },
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

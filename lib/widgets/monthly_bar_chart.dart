@@ -29,7 +29,10 @@ class MonthlyBarChart extends StatelessWidget {
           barTouchData: BarTouchData(
             touchTooltipData: BarTouchTooltipData(
               getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                final monthName = AppConstants.shortMonthNames[group.x.toInt()];
+                final idx = group.x.toInt();
+                final monthName = (idx >= 0 && idx < AppConstants.shortMonthNames.length)
+                    ? AppConstants.shortMonthNames[idx]
+                    : '';
                 return BarTooltipItem(
                   '$monthName\n${AppFormatters.currency(rod.toY)}',
                   const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
