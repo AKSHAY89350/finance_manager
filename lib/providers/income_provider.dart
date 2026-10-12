@@ -8,7 +8,9 @@ class IncomeNotifier extends StateNotifier<AsyncValue<List<ExtraCredit>>> {
   }
 
   Future<void> loadIncome() async {
-    state = const AsyncValue.loading();
+    if (!state.hasValue) {
+      state = const AsyncValue.loading();
+    }
     try {
       final rows = await DatabaseHelper.instance.getAllIncome();
       final items = rows.map((r) => ExtraCredit.fromMap(r)).toList();

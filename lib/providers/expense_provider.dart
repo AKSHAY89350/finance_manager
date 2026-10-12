@@ -8,7 +8,9 @@ class ExpenseNotifier extends StateNotifier<AsyncValue<List<Expense>>> {
   }
 
   Future<void> loadExpenses({String? dateFrom, String? dateTo, String? category, String? bank}) async {
-    state = const AsyncValue.loading();
+    if (!state.hasValue) {
+      state = const AsyncValue.loading();
+    }
     try {
       final rows = await DatabaseHelper.instance.getExpensesFiltered(
         dateFrom: dateFrom,

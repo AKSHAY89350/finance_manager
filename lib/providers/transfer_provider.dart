@@ -8,7 +8,9 @@ class TransferNotifier extends StateNotifier<AsyncValue<List<Transfer>>> {
   }
 
   Future<void> loadTransfers() async {
-    state = const AsyncValue.loading();
+    if (!state.hasValue) {
+      state = const AsyncValue.loading();
+    }
     try {
       final rows = await DatabaseHelper.instance.getAllTransfers();
       final items = rows.map((r) => Transfer.fromMap(r)).toList();

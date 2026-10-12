@@ -15,7 +15,9 @@ class BankNotifier extends StateNotifier<AsyncValue<List<BankBalanceInfo>>> {
   }
 
   Future<void> loadBanks() async {
-    state = const AsyncValue.loading();
+    if (!state.hasValue) {
+      state = const AsyncValue.loading();
+    }
     try {
       final rows = await DatabaseHelper.instance.getAllBanks();
       final banks = rows.map((b) => Bank.fromMap(b)).toList();
