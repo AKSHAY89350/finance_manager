@@ -1,7 +1,7 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../db/database_helper.dart';
 import '../../models/bank.dart';
@@ -82,6 +82,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               controller: last4Ctrl,
               maxLength: 4,
               keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               decoration: const InputDecoration(
                 labelText: 'Last 4 Digits (for SMS Matching)',
                 hintText: 'e.g. 4589',

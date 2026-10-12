@@ -70,6 +70,12 @@ class PendingNotifier extends StateNotifier<AsyncValue<List<PendingTransaction>>
     String? bank,
     double? amount,
   }) async {
+    // Optimistic removal from current state to prevent Dismissible assertion errors
+    if (state.hasValue) {
+      final currentList = state.value!;
+      state = AsyncValue.data(currentList.where((item) => item.fingerprint != txn.fingerprint && (txn.id == null || item.id != txn.id)).toList());
+    }
+
     final finalCategory = category ?? txn.suggestedCategory;
     final finalSubCategory = subCategory ?? txn.suggestedSubCategory;
     final finalBank = bank ?? txn.bank;
@@ -119,6 +125,12 @@ class PendingNotifier extends StateNotifier<AsyncValue<List<PendingTransaction>>
 
   /// Discard a detected transaction (spam, duplicate, or user rejected)
   Future<void> discardTransaction(PendingTransaction txn) async {
+    // Optimistic removal from current state to prevent Dismissible assertion errors
+    if (state.hasValue) {
+      final currentList = state.value!;
+      state = AsyncValue.data(currentList.where((item) => item.fingerprint != txn.fingerprint && (txn.id == null || item.id != txn.id)).toList());
+    }
+
     if (txn.id != null) {
       await DatabaseHelper.instance.updatePendingTransactionStatus(txn.id!, 'DISCARDED');
     }

@@ -17,10 +17,20 @@ class SmsParserService {
   );
 
   // ── Debit Alert Patterns (Expenses) ─────────────────────────
+  // ── Debit Alert Patterns (Expenses) ─────────────────────────
   // Matches: "Rs. 450 debited from A/c XX4589 to ZOMATO on 12-Oct-26"
   // or "Paid INR 1,299 via UPI to BLINKIT ref 429817291827"
+  // or "₹ 450.00 debited from card ending 4589 to ZOMATO"
   static final RegExp _debitRegex = RegExp(
-    r'(?:Rs\.?|INR)\s*([0-9,]+(?:\.[0-9]{2})?)\s*(?:debited|spent|paid|withdrawn|transferred)\s*(?:from|using|via)?\s*(?:A/c|card|acct)?\s*([xX\d]+)?\s*(?:to|at|for|vpa)?\s*([^.]+?)(?:\.|\s+on|\s+avl|\s+ref|\s+UPI\s*ref|\s*$)',
+    r'(?:Rs\.?|INR|₹)\s*([0-9,]+(?:\.[0-9]{2})?)\s*(?:debited|spent|paid|withdrawn|transferred)\s*(?:from|using|via|on|with)?(?:\s*(?:A/c|card|acct)\s*(?:ending|no\.?)?\s*([xX\d*]+))?.*?(?:to|at|for|vpa|towards)\s+([^.\n]+?)(?:\.|\s+on|\s+avl|\s+ref|\s+UPI\s*ref|\s*$)',
+    caseSensitive: false,
+  );
+
+  // Account-first debit pattern (SBI, PNB, BoB, Axis):
+  // Matches: "A/c *1234 debited by Rs.999.00 on 12-10-26 towards SWIGGY. Avl Bal Rs.25000"
+  // or "Card XX4589 debited for INR 450.00 to Zomato"
+  static final RegExp _accountFirstDebitRegex = RegExp(
+    r'(?:A/c|card|acct)\s*(?:ending\s*)?([xX\d*]+).*?(?:debited|spent|charged|withdrawn)\s*(?:by|for|with)?\s*(?:Rs\.?|INR|₹)\s*([0-9,]+(?:\.[0-9]{2})?).*?(?:to|at|for|vpa|towards)\s+([^.\n]+?)(?:\.|\s+on|\s+avl|\s+ref|\s+UPI\s*ref|\s*$)',
     caseSensitive: false,
   );
 
@@ -33,7 +43,14 @@ class SmsParserService {
   // ── Credit Alert Patterns (Income / Salary) ─────────────────
   // Matches: "Rs 85,000 credited to A/c XX4589 on 01-Oct-26 by NEOSOFT SALARY"
   static final RegExp _creditRegex = RegExp(
-    r'(?:Rs\.?|INR)\s*([0-9,]+(?:\.[0-9]{2})?)\s*(?:credited|deposited|received)\s*(?:to|in)?\s*(?:A/c|account)?\s*([xX\d]+)?(?:\s*by|\s*from)?\s*([^.]+)?(?:\.|\s+on|\s+avl|\s*$)',
+    r'(?:Rs\.?|INR|₹)\s*([0-9,]+(?:\.[0-9]{2})?)\s*(?:credited|deposited|received)\s*(?:to|in)?(?:\s*(?:A/c|account|card)\s*(?:ending|no\.?)?\s*([xX\d*]+))?.*?(?:by|from)\s+([^.\n]+?)(?:\.|\s+on|\s+avl|\s*$)',
+    caseSensitive: false,
+  );
+
+  // Account-first credit pattern (SBI, PNB, BoB, Axis):
+  // Matches: "A/c *1234 credited by Rs.85,000.00 on 01-Oct-26 by NEOSOFT SALARY"
+  static final RegExp _accountFirstCreditRegex = RegExp(
+    r'(?:A/c|card|acct)\s*(?:ending\s*)?([xX\d*]+).*?(?:credited|deposited|received)\s*(?:by|with)?\s*(?:Rs\.?|INR|₹)\s*([0-9,]+(?:\.[0-9]{2})?).*?(?:by|from)\s+([^.\n]+?)(?:\.|\s+on|\s+avl|\s*$)',
     caseSensitive: false,
   );
 
@@ -71,7 +88,7 @@ class SmsParserService {
       refId = refMatch.group(1)?.trim();
     }
 
-    // ── 1. Check Debit (Expense) ──────────────────────────────
+    // ── 1. Check Standard Debit (Expense) ─────────────────────
     final debitMatch = _debitRegex.firstMatch(cleanText);
     if (debitMatch != null) {
       final rawAmount = debitMatch.group(1)?.replaceAll(',', '');
@@ -83,7 +100,11 @@ class SmsParserService {
       merchant = _cleanMerchantName(merchant);
 
       // Determine Bank
-      final bank = await _resolveBank(sender: sender, accountDigits: accountDigits);
+      final bank = await _resolveBank(
+        sender: sender,
+        accountDigits: accountDigits,
+        bodyText: cleanText,
+      );
 
       // Auto-categorize
       final (category, subCategory) = await MerchantCategorizer.categorize(merchant);
@@ -113,7 +134,50 @@ class SmsParserService {
       );
     }
 
-    // Check secondary UPI debit notification format
+    // ── 1b. Check Account-First Debit (SBI / PNB / BoB) ────────
+    final accountFirstMatch = _accountFirstDebitRegex.firstMatch(cleanText);
+    if (accountFirstMatch != null) {
+      final accountDigits = accountFirstMatch.group(1)?.replaceAll(RegExp(r'[^0-9]'), '');
+      final rawAmount = accountFirstMatch.group(2)?.replaceAll(',', '');
+      final amount = double.tryParse(rawAmount ?? '') ?? 0.0;
+      if (amount <= 0) return null;
+
+      var merchant = accountFirstMatch.group(3)?.trim() ?? 'Unknown Merchant';
+      merchant = _cleanMerchantName(merchant);
+
+      final bank = await _resolveBank(
+        sender: sender,
+        accountDigits: accountDigits,
+        bodyText: cleanText,
+      );
+
+      final (category, subCategory) = await MerchantCategorizer.categorize(merchant);
+
+      final fingerprint = _generateFingerprint(
+        amount: amount,
+        bank: bank,
+        date: dateNow,
+        merchant: merchant,
+        refId: refId,
+      );
+
+      return PendingTransaction(
+        fingerprint: fingerprint,
+        date: dateStr,
+        type: 'EXPENSE',
+        amount: amount,
+        bank: bank,
+        accountDigits: accountDigits,
+        merchant: merchant,
+        suggestedCategory: category,
+        suggestedSubCategory: subCategory,
+        rawMessage: cleanText,
+        refId: refId,
+        createdAt: DateTime.now().toIso8601String(),
+      );
+    }
+
+    // ── 1c. Check UPI App Debit Notification ──────────────────
     final upiMatch = _upiDebitRegex.firstMatch(cleanText);
     if (upiMatch != null) {
       final rawAmount = upiMatch.group(1)?.replaceAll(',', '');
@@ -123,7 +187,11 @@ class SmsParserService {
       var merchant = upiMatch.group(2)?.trim() ?? 'Unknown Merchant';
       merchant = _cleanMerchantName(merchant);
 
-      final bank = await _resolveBank(sender: sender, accountDigits: null);
+      final bank = await _resolveBank(
+        sender: sender,
+        accountDigits: null,
+        bodyText: cleanText,
+      );
       final (category, subCategory) = await MerchantCategorizer.categorize(merchant);
 
       final fingerprint = _generateFingerprint(
@@ -150,7 +218,7 @@ class SmsParserService {
       );
     }
 
-    // ── 2. Check Credit (Income / Salary) ─────────────────────
+    // ── 2. Check Standard Credit (Income / Salary) ─────────────
     final creditMatch = _creditRegex.firstMatch(cleanText);
     if (creditMatch != null) {
       final rawAmount = creditMatch.group(1)?.replaceAll(',', '');
@@ -161,7 +229,52 @@ class SmsParserService {
       var source = creditMatch.group(3)?.trim() ?? 'Direct Deposit';
       source = _cleanMerchantName(source);
 
-      final bank = await _resolveBank(sender: sender, accountDigits: accountDigits);
+      final bank = await _resolveBank(
+        sender: sender,
+        accountDigits: accountDigits,
+        bodyText: cleanText,
+      );
+
+      final fingerprint = _generateFingerprint(
+        amount: amount,
+        bank: bank,
+        date: dateNow,
+        merchant: source,
+        refId: refId,
+      );
+
+      return PendingTransaction(
+        fingerprint: fingerprint,
+        date: dateStr,
+        type: 'INCOME',
+        amount: amount,
+        bank: bank,
+        accountDigits: accountDigits,
+        merchant: source,
+        suggestedCategory: 'Income',
+        suggestedSubCategory: 'Salary',
+        rawMessage: cleanText,
+        refId: refId,
+        createdAt: DateTime.now().toIso8601String(),
+      );
+    }
+
+    // ── 2b. Check Account-First Credit ────────────────────────
+    final accountFirstCreditMatch = _accountFirstCreditRegex.firstMatch(cleanText);
+    if (accountFirstCreditMatch != null) {
+      final accountDigits = accountFirstCreditMatch.group(1)?.replaceAll(RegExp(r'[^0-9]'), '');
+      final rawAmount = accountFirstCreditMatch.group(2)?.replaceAll(',', '');
+      final amount = double.tryParse(rawAmount ?? '') ?? 0.0;
+      if (amount <= 0) return null;
+
+      var source = accountFirstCreditMatch.group(3)?.trim() ?? 'Direct Deposit';
+      source = _cleanMerchantName(source);
+
+      final bank = await _resolveBank(
+        sender: sender,
+        accountDigits: accountDigits,
+        bodyText: cleanText,
+      );
 
       final fingerprint = _generateFingerprint(
         amount: amount,
@@ -190,10 +303,11 @@ class SmsParserService {
     return null;
   }
 
-  /// Resolve bank by account last 4 digits or sender mask
+  /// Resolve bank by account last 4 digits, sender mask, or in-body bank name
   static Future<String> _resolveBank({
     String? sender,
     String? accountDigits,
+    String? bodyText,
   }) async {
     // 1. Check account last 4 digits in DB
     if (accountDigits != null && accountDigits.length >= 3) {
@@ -215,16 +329,38 @@ class SmsParserService {
       if (s.contains('SBI')) return 'SBI';
       if (s.contains('HSBC')) return 'HSBC';
       if (s.contains('PNB')) return 'PNB';
-      if (s.contains('ICICI')) return 'HDFC'; // fallback default
+      if (s.contains('ICICI')) return 'ICICI';
+      if (s.contains('AXIS')) return 'AXIS';
+      if (s.contains('KOTAK')) return 'KOTAK';
+      if (s.contains('BOB') || s.contains('BARODA')) return 'BANK OF BARODA';
     }
 
-    // 3. Fallback to default bank
+    // 3. Check in-body bank name detection
+    if (bodyText != null) {
+      final b = bodyText.toUpperCase();
+      if (b.contains('HDFC')) return 'HDFC';
+      if (b.contains('STATE BANK') || b.contains('SBI')) return 'SBI';
+      if (b.contains('ICICI')) return 'ICICI';
+      if (b.contains('AXIS')) return 'AXIS';
+      if (b.contains('KOTAK')) return 'KOTAK';
+      if (b.contains('PUNJAB NATIONAL') || b.contains('PNB')) return 'PNB';
+      if (b.contains('HSBC')) return 'HSBC';
+      if (b.contains('BANK OF BARODA') || b.contains('BOB')) return 'BANK OF BARODA';
+    }
+
+    // 4. Fallback to default bank
     return 'HSBC';
   }
 
   /// Clean extracted merchant string
   static String _cleanMerchantName(String raw) {
-    var m = raw.replaceAll(RegExp(r'^(VPA|TO|AT|FOR|VIA|UPI|INF)\s+', caseSensitive: false), '');
+    var m = raw.trim();
+    // Strip intermediate date phrases if leaked into merchant, e.g. "on 12-Oct-26 to ZOMATO" -> "ZOMATO"
+    m = m.replaceAll(RegExp(r'^on\s+[\w/-]+\s+(?:to|towards|at|for|vpa|via)?\s*', caseSensitive: false), '');
+    // Strip leading prepositions/prefixes
+    m = m.replaceAll(RegExp(r'^(VPA|TO|TOWARDS|AT|FOR|VIA|UPI|INF|INFO)[:\s]+', caseSensitive: false), '');
+    // Strip trailing reference or balance info that might leak
+    m = m.replaceAll(RegExp(r'\s+(avl\s+bal|bal|ref|rrn|utr|upi|on\s+\d|txn).*$', caseSensitive: false), '');
     m = m.replaceAll(RegExp(r'[\r\n\t]+'), ' ');
     m = m.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
     if (m.length > 40) {

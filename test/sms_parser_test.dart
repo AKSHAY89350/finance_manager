@@ -65,6 +65,66 @@ void main() {
       expect(parsed, isNull);
     });
 
+    test('Debit Expense: Rupee symbol and Clean Merchant Name', () async {
+      const msg = '₹ 450.00 debited from A/c XX4589 on 12-Oct-26 to ZOMATO. Avl Bal: Rs 45,210.00';
+      final parsed = await SmsParserService.parseMessage(msg);
+
+      expect(parsed, isNotNull);
+      expect(parsed!.type, 'EXPENSE');
+      expect(parsed.amount, 450.0);
+      expect(parsed.merchant, 'ZOMATO');
+      expect(parsed.suggestedCategory, 'Food');
+      expect(parsed.suggestedSubCategory, 'Zomato / Swiggy');
+    });
+
+    test('SBI Account-First Pattern with towards', () async {
+      const msg = 'SBI: A/c *1234 debited by Rs.999.00 on 12-10-26 towards SWIGGY. Avl Bal Rs.25000';
+      final parsed = await SmsParserService.parseMessage(msg);
+
+      expect(parsed, isNotNull);
+      expect(parsed!.type, 'EXPENSE');
+      expect(parsed.amount, 999.0);
+      expect(parsed.accountDigits, '1234');
+      expect(parsed.merchant, 'SWIGGY');
+      expect(parsed.bank, 'SBI');
+      expect(parsed.suggestedCategory, 'Food');
+      expect(parsed.suggestedSubCategory, 'Zomato / Swiggy');
+    });
+
+    test('In-Body Bank Name Detection and Card Ending Format', () async {
+      const msg = 'ICICI Bank: ₹ 1,500.00 spent on card ending 4589 to AMAZON ref 998877';
+      final parsed = await SmsParserService.parseMessage(msg);
+
+      expect(parsed, isNotNull);
+      expect(parsed!.type, 'EXPENSE');
+      expect(parsed.amount, 1500.0);
+      expect(parsed.bank, 'ICICI');
+      expect(parsed.merchant, 'AMAZON');
+      expect(parsed.accountDigits, '4589');
+      expect(parsed.refId, '998877');
+    });
+
+    test('Preposition prefix stripping (towards Electricity Bill)', () async {
+      const msg = 'Rs 1,250 debited from A/c XX1234 towards Electricity Bill';
+      final parsed = await SmsParserService.parseMessage(msg);
+
+      expect(parsed, isNotNull);
+      expect(parsed!.amount, 1250.0);
+      expect(parsed.merchant, 'Electricity Bill');
+      expect(parsed.suggestedCategory, 'Bills & Utilities');
+    });
+
+    test('Credit Income: Rupee symbol and In-Body Bank Detection', () async {
+      const msg = 'PNB: ₹ 45,000.00 credited to A/c XX4589 by FREELANCE. Avl Bal: Rs 65,000.00';
+      final parsed = await SmsParserService.parseMessage(msg);
+
+      expect(parsed, isNotNull);
+      expect(parsed!.type, 'INCOME');
+      expect(parsed.amount, 45000.0);
+      expect(parsed.bank, 'PNB');
+      expect(parsed.merchant, 'FREELANCE');
+    });
+
     test('Merchant Categorizer Seed Keywords', () async {
       final uber = await MerchantCategorizer.categorize('UBER TRIP');
       expect(uber.$1, 'Traveling');

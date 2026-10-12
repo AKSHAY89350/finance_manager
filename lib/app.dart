@@ -214,14 +214,38 @@ class AuthGate extends StatefulWidget {
   State<AuthGate> createState() => _AuthGateState();
 }
 
-class _AuthGateState extends State<AuthGate> {
+class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   bool _isLocked = false;
   bool _isChecking = true;
+  bool _isAuthenticating = false;
+  DateTime? _lastPausedTime;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _checkBiometricLock();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _lastPausedTime = DateTime.now();
+    } else if (state == AppLifecycleState.resumed) {
+      if (!_isAuthenticating && _lastPausedTime != null) {
+        final elapsed = DateTime.now().difference(_lastPausedTime!);
+        // Re-lock if the app was backgrounded for more than 2 seconds
+        if (elapsed.inSeconds >= 2) {
+          _checkBiometricLock();
+        }
+      }
+    }
   }
 
   Future<void> _checkBiometricLock() async {
@@ -245,9 +269,15 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   Future<void> _authenticate() async {
-    final success = await BiometricService.authenticate();
-    if (success && mounted) {
-      setState(() => _isLocked = false);
+    if (_isAuthenticating) return;
+    _isAuthenticating = true;
+    try {
+      final success = await BiometricService.authenticate();
+      if (success && mounted) {
+        setState(() => _isLocked = false);
+      }
+    } finally {
+      _isAuthenticating = false;
     }
   }
 

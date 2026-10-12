@@ -409,7 +409,17 @@ class _ReviewInboxScreenState extends ConsumerState<ReviewInboxScreen> {
                         foregroundColor: Colors.white,
                       ),
                       onPressed: () async {
-                        final parsedAmount = double.tryParse(amountController.text) ?? txn.amount;
+                        final parsedAmount = double.tryParse(amountController.text.trim()) ?? 0.0;
+                        if (parsedAmount <= 0) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Please enter a valid amount greater than 0'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                          return;
+                        }
+
                         Navigator.pop(sheetContext);
 
                         await ref.read(pendingNotifierProvider.notifier).confirmTransaction(
