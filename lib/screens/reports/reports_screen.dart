@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../db/database_helper.dart';
 import '../../providers/expense_provider.dart';
+import '../../providers/bank_provider.dart';
 import '../../screens/main_scaffold.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/constants.dart';
@@ -20,6 +21,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> with SingleTicker
   late TabController _tabController;
   int _selectedYear = DateTime.now().year;
   int _selectedMonth = DateTime.now().month;
+  String _selectedBank = 'All Banks';
 
   bool _isLoading = true;
   List<Map<String, dynamic>> _categoryData = [];
@@ -51,6 +53,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> with SingleTicker
     final catData = await DatabaseHelper.instance.getCategoryBreakdown(
       dateFrom: start,
       dateTo: end,
+      bank: _selectedBank == 'All Banks' ? null : _selectedBank,
     );
     double totalCat = 0;
     for (final row in catData) {
@@ -128,6 +131,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> with SingleTicker
 
   Widget _buildCategoryChartView() {
     final years = _availableYears();
+    final bankState = ref.watch(bankProvider);
+    final banks = bankState.maybeWhen(
+      data: (list) => list.map((b) => b.bank.name).toList(),
+      orElse: () => AppConstants.defaultBanks,
+    );
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -159,6 +167,18 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> with SingleTicker
               onChanged: (val) {
                 if (val != null) {
                   setState(() => _selectedYear = val);
+                  _loadReportData();
+                }
+              },
+            ),
+            DropdownButton<String>(
+              value: (['All Banks', ...banks].contains(_selectedBank)) ? _selectedBank : 'All Banks',
+              items: ['All Banks', ...banks].map((b) {
+                return DropdownMenuItem(value: b, child: Text(b));
+              }).toList(),
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() => _selectedBank = val);
                   _loadReportData();
                 }
               },

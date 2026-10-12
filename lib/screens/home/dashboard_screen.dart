@@ -282,6 +282,16 @@ class DashboardScreen extends ConsumerWidget {
                     return BankBalanceCard(
                       bank: item.bank,
                       liveBalance: item.liveBalance,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => TransactionListScreen(
+                              initialBankFilter: item.bank.name,
+                            ),
+                          ),
+                        );
+                      },
                     );
                   },
                 ),

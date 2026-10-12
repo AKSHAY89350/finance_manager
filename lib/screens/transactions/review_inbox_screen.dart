@@ -14,6 +14,9 @@ class ReviewInboxScreen extends ConsumerStatefulWidget {
 }
 
 class _ReviewInboxScreenState extends ConsumerState<ReviewInboxScreen> {
+  String? _bankFilter;
+  String? _typeFilter;
+
   @override
   Widget build(BuildContext context) {
     final pendingAsync = ref.watch(pendingNotifierProvider);
@@ -69,14 +72,103 @@ class _ReviewInboxScreenState extends ConsumerState<ReviewInboxScreen> {
             );
           }
 
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: list.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
-            itemBuilder: (context, index) {
-              final txn = list[index];
-              return _buildPendingCard(context, txn);
-            },
+          final uniqueBanks = list.map((e) => e.bank).toSet().toList();
+          final displayed = list.where((txn) {
+            if (_bankFilter != null && txn.bank.toLowerCase() != _bankFilter!.toLowerCase()) {
+              return false;
+            }
+            if (_typeFilter != null && txn.type.toUpperCase() != _typeFilter!.toUpperCase()) {
+              return false;
+            }
+            return true;
+          }).toList();
+
+          return Column(
+            children: [
+              if (uniqueBanks.length > 1 || list.length > 2)
+                Container(
+                  color: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        ChoiceChip(
+                          label: const Text('All'),
+                          selected: _bankFilter == null && _typeFilter == null,
+                          onSelected: (_) {
+                            setState(() {
+                              _bankFilter = null;
+                              _typeFilter = null;
+                            });
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        ...uniqueBanks.map((b) => Padding(
+                              padding: const EdgeInsets.only(right: 8.0),
+                              child: ChoiceChip(
+                                label: Text(b),
+                                selected: _bankFilter?.toLowerCase() == b.toLowerCase(),
+                                onSelected: (sel) {
+                                  setState(() => _bankFilter = sel ? b : null);
+                                },
+                              ),
+                            )),
+                        ChoiceChip(
+                          label: const Text('Debits'),
+                          selected: _typeFilter == 'EXPENSE',
+                          onSelected: (sel) {
+                            setState(() => _typeFilter = sel ? 'EXPENSE' : null);
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        ChoiceChip(
+                          label: const Text('Credits'),
+                          selected: _typeFilter == 'INCOME',
+                          onSelected: (sel) {
+                            setState(() => _typeFilter = sel ? 'INCOME' : null);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              Expanded(
+                child: displayed.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.filter_list_off, size: 48, color: Colors.grey),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'No pending SMS match the selected filter',
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                            const SizedBox(height: 8),
+                            TextButton(
+                              onPressed: () {
+                                setState(() {
+                                  _bankFilter = null;
+                                  _typeFilter = null;
+                                });
+                              },
+                              child: const Text('Clear Filters'),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: displayed.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          final txn = displayed[index];
+                          return _buildPendingCard(context, txn);
+                        },
+                      ),
+              ),
+            ],
           );
         },
       ),

@@ -66,7 +66,7 @@ void main() {
     });
 
     test('Anti-Noise Shield: Oversized Payload (>1000 chars) Discarded for ReDoS Prevention', () async {
-      final oversizedMsg = 'Rs 500 debited to Zomato ' + ('A' * 1100);
+      final oversizedMsg = 'Rs 500 debited to Zomato ${'A' * 1100}';
       final parsed = await SmsParserService.parseMessage(oversizedMsg);
       expect(parsed, isNull);
     });
