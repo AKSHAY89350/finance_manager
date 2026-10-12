@@ -6,6 +6,8 @@ import 'screens/expense/add_expense_screen.dart';
 import 'screens/income/add_income_screen.dart';
 import 'screens/transfer/transfer_screen.dart';
 
+import 'services/biometric_service.dart';
+
 class FinanceApp extends StatelessWidget {
   const FinanceApp({super.key});
 
@@ -36,7 +38,7 @@ class FinanceApp extends StatelessWidget {
         '/add-income': (_) => const AddIncomeScreen(),
         '/transfer': (_) => const TransferScreen(),
       },
-      home: const MainScaffold(),
+      home: const AuthGate(),
     );
   }
 
@@ -202,5 +204,107 @@ class FinanceApp extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       ),
     );
+  }
+}
+
+class AuthGate extends StatefulWidget {
+  const AuthGate({super.key});
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  bool _isLocked = false;
+  bool _isChecking = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkBiometricLock();
+  }
+
+  Future<void> _checkBiometricLock() async {
+    final enabled = await BiometricService.isBiometricEnabled();
+    if (enabled) {
+      if (mounted) {
+        setState(() {
+          _isLocked = true;
+          _isChecking = false;
+        });
+      }
+      _authenticate();
+    } else {
+      if (mounted) {
+        setState(() {
+          _isLocked = false;
+          _isChecking = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _authenticate() async {
+    final success = await BiometricService.authenticate();
+    if (success && mounted) {
+      setState(() => _isLocked = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isChecking) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_isLocked) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.lock_outline_rounded, size: 64, color: AppColors.primary),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Finance Manager is Locked',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Biometric authentication is required to access your records.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 32),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                  onPressed: _authenticate,
+                  icon: const Icon(Icons.fingerprint),
+                  label: const Text('Unlock with Biometrics'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return const MainScaffold();
   }
 }

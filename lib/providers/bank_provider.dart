@@ -40,8 +40,15 @@ class BankNotifier extends StateNotifier<AsyncValue<List<BankBalanceInfo>>> {
     await DatabaseHelper.instance.updateBankBalance(id, balance);
     await loadBanks();
   }
+
+  Future<void> updateBankLast4(int id, String? last4) async {
+    await DatabaseHelper.instance.updateBankLast4(id, last4);
+    await loadBanks();
+  }
 }
 
 final bankProvider = StateNotifierProvider<BankNotifier, AsyncValue<List<BankBalanceInfo>>>((ref) {
   return BankNotifier();
 });
+
+final bankListProvider = bankProvider;

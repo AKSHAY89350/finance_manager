@@ -169,13 +169,15 @@ class AppConstants {
 
   // ── SQLite DB Settings ─────────────────────────────────────────
   static const String dbName    = 'finance_manager.db';
-  static const int    dbVersion = 1;
+  static const int    dbVersion = 2;
 
   // ── Table Names ────────────────────────────────────────────────
-  static const String tableExpenses      = 'expenses';
-  static const String tableBanks         = 'banks';
-  static const String tableExtraCredit   = 'extra_credit';
-  static const String tableTransfers     = 'transfers';
-  static const String tableCategories    = 'categories';
-  static const String tableSubCategories = 'sub_categories';
+  static const String tableExpenses            = 'expenses';
+  static const String tableBanks               = 'banks';
+  static const String tableExtraCredit         = 'extra_credit';
+  static const String tableTransfers           = 'transfers';
+  static const String tableCategories          = 'categories';
+  static const String tableSubCategories       = 'sub_categories';
+  static const String tablePendingTransactions = 'pending_transactions';
+  static const String tableMerchantRules       = 'merchant_category_rules';
 }

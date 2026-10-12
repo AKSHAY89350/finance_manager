@@ -1,10 +1,10 @@
 package com.financeapp.finance_manager
 
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import android.view.WindowManager
 
-class MainActivity : FlutterActivity() {
+class MainActivity : FlutterFragmentActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         // Prevent screenshots, screen recording, and obscure app switcher snapshot

@@ -6,6 +6,8 @@ import '../../providers/income_provider.dart';
 import '../../providers/transfer_provider.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/formatters.dart';
+import '../../providers/pending_provider.dart';
+import '../transactions/review_inbox_screen.dart';
 import '../../widgets/bank_balance_card.dart';
 import '../transactions/transaction_list_screen.dart';
 
@@ -16,12 +18,50 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final bankState = ref.watch(bankProvider);
     final expenseState = ref.watch(expenseProvider);
+    final pendingCount = ref.watch(pendingCountProvider);
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('Overview'),
         actions: [
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.inbox_outlined),
+                tooltip: 'Review Inbox (On-Time SMS)',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ReviewInboxScreen()),
+                  );
+                },
+              ),
+              if (pendingCount > 0)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                    constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                    child: Text(
+                      '$pendingCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
+          ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: 'Recalculate balances',
@@ -30,6 +70,7 @@ class DashboardScreen extends ConsumerWidget {
               ref.read(expenseProvider.notifier).loadExpenses();
               ref.read(incomeProvider.notifier).loadIncome();
               ref.read(transferProvider.notifier).loadTransfers();
+              ref.read(pendingNotifierProvider.notifier).loadPending();
             },
           ),
         ],
@@ -40,10 +81,69 @@ class DashboardScreen extends ConsumerWidget {
           await ref.read(expenseProvider.notifier).loadExpenses();
           await ref.read(incomeProvider.notifier).loadIncome();
           await ref.read(transferProvider.notifier).loadTransfers();
+          await ref.read(pendingNotifierProvider.notifier).loadPending();
         },
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           children: [
+            // Review Inbox Alert Banner (if pending > 0)
+            if (pendingCount > 0)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16.0),
+                child: InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ReviewInboxScreen()),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade50,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.amber.shade400, width: 1.5),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade100,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(Icons.mark_email_unread_outlined, color: Colors.amber.shade900, size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '$pendingCount Auto-Detected Transactions',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF78350F),
+                                  fontSize: 14,
+                                ),
+                              ),
+                              Text(
+                                'Tap to review, edit or confirm into ledger',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.amber.shade900,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(Icons.arrow_forward_ios, size: 14, color: Colors.amber.shade900),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             // Total Live Balance Card
             bankState.when(
               loading: () => const Center(child: Padding(

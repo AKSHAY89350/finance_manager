@@ -4,15 +4,19 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../db/database_helper.dart';
+import '../../models/bank.dart';
+import '../../models/merchant_rule.dart';
 import '../../providers/bank_provider.dart';
 import '../../providers/expense_provider.dart';
 import '../../providers/income_provider.dart';
 import '../../providers/transfer_provider.dart';
+import '../../services/biometric_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/constants.dart';
 import '../../utils/excel_import_helper.dart';
 import '../../utils/export_helper.dart';
 import '../../utils/formatters.dart';
+import '../transactions/review_inbox_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -23,21 +27,68 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _isExporting = false;
+  bool _isBiometricEnabled = false;
 
-  void _showStartingBalanceDialog(BuildContext context, int bankId, String bankName, double currentStart) {
-    final controller = TextEditingController(text: currentStart.toString());
+  @override
+  void initState() {
+    super.initState();
+    _loadBiometricStatus();
+  }
+
+  Future<void> _loadBiometricStatus() async {
+    final enabled = await BiometricService.isBiometricEnabled();
+    if (mounted) setState(() => _isBiometricEnabled = enabled);
+  }
+
+  Future<void> _toggleBiometric(bool value) async {
+    if (value) {
+      final success = await BiometricService.authenticate(
+        reason: 'Authenticate to enable biometric app lock',
+      );
+      if (!success) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Biometric verification failed')),
+          );
+        }
+        return;
+      }
+    }
+    await BiometricService.setBiometricEnabled(value);
+    if (mounted) setState(() => _isBiometricEnabled = value);
+  }
+
+  void _showBankEditDialog(BuildContext context, Bank bank) {
+    final balCtrl = TextEditingController(text: bank.startingBalance.toString());
+    final last4Ctrl = TextEditingController(text: bank.accountLast4 ?? '');
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Starting Balance ($bankName)'),
-        content: TextField(
-          controller: controller,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(
-            labelText: 'Starting Balance (₹)',
-            prefixText: '₹ ',
-          ),
+        title: Text('Edit ${bank.name} Account'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: balCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Starting Balance (₹)',
+                prefixText: '₹ ',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: last4Ctrl,
+              maxLength: 4,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Last 4 Digits (for SMS Matching)',
+                hintText: 'e.g. 4589',
+                helperText: 'SMS stating A/c XX4589 will auto-link here',
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -46,18 +97,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              final newBal = double.tryParse(controller.text.trim());
-              if (newBal != null) {
-                final nav = Navigator.of(ctx);
-                final messenger = ScaffoldMessenger.of(context);
-                await DatabaseHelper.instance.updateBankBalance(bankId, newBal);
-                await ref.read(bankProvider.notifier).loadBanks();
-                if (mounted) {
-                  nav.pop();
-                  messenger.showSnackBar(
-                    SnackBar(content: Text('Updated starting balance for $bankName')),
-                  );
-                }
+              if (bank.id == null) return;
+              final newBal = double.tryParse(balCtrl.text.trim()) ?? bank.startingBalance;
+              final newLast4 = last4Ctrl.text.trim();
+              final nav = Navigator.of(ctx);
+              final messenger = ScaffoldMessenger.of(context);
+
+              await DatabaseHelper.instance.updateBankBalance(bank.id!, newBal);
+              await DatabaseHelper.instance.updateBankLast4(bank.id!, newLast4.isEmpty ? null : newLast4);
+              await ref.read(bankProvider.notifier).loadBanks();
+
+              if (mounted) {
+                nav.pop();
+                messenger.showSnackBar(
+                  SnackBar(content: Text('Updated ${bank.name} settings')),
+                );
               }
             },
             child: const Text('Save'),
@@ -273,6 +327,61 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  void _showLearnedRulesDialog(BuildContext context) async {
+    final List<MerchantRule> rules = await DatabaseHelper.instance.getAllMerchantRules();
+
+    if (!context.mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) {
+          return AlertDialog(
+            title: const Text('Learned Categorization Rules'),
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 350,
+              child: rules.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No custom merchant rules yet.\nRules are learned automatically whenever you edit an auto-detected transaction.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    )
+                  : ListView.separated(
+                      itemCount: rules.length,
+                      separatorBuilder: (_, __) => const Divider(),
+                      itemBuilder: (context, i) {
+                        final r = rules[i];
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(r.merchantKeyword, style: const TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: Text('${r.category}${r.subCategory != null ? " › ${r.subCategory}" : ""} (Used ${r.usageCount}x)'),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete_outline, color: Colors.red),
+                            onPressed: () async {
+                              await DatabaseHelper.instance.deleteMerchantRule(r.merchantKeyword);
+                              final updated = await DatabaseHelper.instance.getAllMerchantRules();
+                              setDialogState(() {
+                                rules.clear();
+                                rules.addAll(updated);
+                              });
+                            },
+                          ),
+                        );
+                      },
+                    ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final bankState = ref.watch(bankProvider);
@@ -301,6 +410,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   data: (banks) => Column(
                     children: [
                       ...banks.map((item) {
+                        final hasLast4 = item.bank.accountLast4 != null && item.bank.accountLast4!.isNotEmpty;
                         return Card(
                           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
                           child: ListTile(
@@ -312,14 +422,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               ),
                             ),
                             title: Text(item.bank.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                            subtitle: Text('Starting Bal: ${AppFormatters.currency(item.bank.startingBalance)}'),
+                            subtitle: Text(
+                              'Start Bal: ${AppFormatters.currency(item.bank.startingBalance)}'
+                              '${hasLast4 ? " • A/c: ••••${item.bank.accountLast4}" : " • No A/c digits"}',
+                            ),
                             trailing: TextButton.icon(
                               icon: const Icon(Icons.edit, size: 16),
-                              label: const Text('Adjust'),
+                              label: const Text('Edit'),
                               onPressed: () {
-                                if (item.bank.id != null) {
-                                  _showStartingBalanceDialog(context, item.bank.id!, item.bank.name, item.bank.startingBalance);
-                                }
+                                _showBankEditDialog(context, item.bank);
                               },
                             ),
                           ),
@@ -334,6 +445,47 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         ),
                       ),
                     ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+                _sectionHeader('On-Time SMS & Review Tools (Phase 9)'),
+                Card(
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+                  child: ListTile(
+                    leading: const Icon(Icons.inbox_outlined, color: AppColors.primary),
+                    title: const Text('Review Inbox (Auto-Detected)'),
+                    subtitle: const Text('Review, confirm or edit pending SMS and UPI entries'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const ReviewInboxScreen()),
+                      );
+                    },
+                  ),
+                ),
+                Card(
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+                  child: ListTile(
+                    leading: const Icon(Icons.psychology_outlined, color: Colors.purple),
+                    title: const Text('Learned Categorization Rules'),
+                    subtitle: const Text('View & manage merchant auto-mapping rules learned on-device'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => _showLearnedRulesDialog(context),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+                _sectionHeader('Security & Biometrics'),
+                Card(
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+                  child: SwitchListTile(
+                    secondary: const Icon(Icons.fingerprint, color: AppColors.primary),
+                    title: const Text('Biometric App Lock'),
+                    subtitle: const Text('Require Fingerprint / Face ID / PIN to open app'),
+                    value: _isBiometricEnabled,
+                    onChanged: _toggleBiometric,
                   ),
                 ),
 

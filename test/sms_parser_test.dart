@@ -1,0 +1,79 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:finance_manager/services/sms_parser_service.dart';
+import 'package:finance_manager/services/merchant_categorizer.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('Phase 9 - SMS Parser & Categorizer Tests', () {
+    test('Debit Expense: Zomato Alert', () async {
+      const msg = 'Rs 450.00 debited from A/c XX4589 on 12-Oct-26 to ZOMATO. Avl Bal: Rs 45,210.00';
+      final parsed = await SmsParserService.parseMessage(msg);
+
+      expect(parsed, isNotNull);
+      expect(parsed!.type, 'EXPENSE');
+      expect(parsed.amount, 450.0);
+      expect(parsed.merchant.toUpperCase(), contains('ZOMATO'));
+      expect(parsed.suggestedCategory, 'Food');
+      expect(parsed.suggestedSubCategory, 'Zomato / Swiggy');
+    });
+
+    test('Debit Expense: Blinkit Alert', () async {
+      const msg = 'INR 1,299 debited from card ending 1024 for BLINKIT ref 429817291827';
+      final parsed = await SmsParserService.parseMessage(msg);
+
+      expect(parsed, isNotNull);
+      expect(parsed!.type, 'EXPENSE');
+      expect(parsed.amount, 1299.0);
+      expect(parsed.merchant.toUpperCase(), contains('BLINKIT'));
+      expect(parsed.suggestedCategory, 'Quick Ecommerce');
+      expect(parsed.suggestedSubCategory, 'Blinkit');
+      expect(parsed.refId, '429817291827');
+    });
+
+    test('UPI App Debit: Chai Point', () async {
+      const msg = 'Paid INR 75.00 to Chai Point via UPI ref 8921739182';
+      final parsed = await SmsParserService.parseMessage(msg);
+
+      expect(parsed, isNotNull);
+      expect(parsed!.type, 'EXPENSE');
+      expect(parsed.amount, 75.0);
+      expect(parsed.merchant, contains('Chai Point'));
+      expect(parsed.suggestedCategory, 'Food');
+      expect(parsed.suggestedSubCategory, 'Cafe & Snacks');
+    });
+
+    test('Credit Income: Salary Alert', () async {
+      const msg = 'Rs 85,000.00 credited to A/c XX4589 on 01-Oct-26 by NEOSOFT SALARY. Avl Bal: Rs 1,20,500.00';
+      final parsed = await SmsParserService.parseMessage(msg);
+
+      expect(parsed, isNotNull);
+      expect(parsed!.type, 'INCOME');
+      expect(parsed.amount, 85000.0);
+      expect(parsed.merchant.toUpperCase(), contains('NEOSOFT SALARY'));
+    });
+
+    test('Anti-Noise Shield: OTP Discarded', () async {
+      const otpMsg = 'Your HDFC Bank OTP is 482910 for txn of Rs 500. Do not share with anyone.';
+      final parsed = await SmsParserService.parseMessage(otpMsg);
+      expect(parsed, isNull);
+    });
+
+    test('Anti-Noise Shield: Promotional Loan Discarded', () async {
+      const promoMsg = 'Congratulations! Pre-approved personal loan of Rs 5,00,000 at zero processing fee. Apply now.';
+      final parsed = await SmsParserService.parseMessage(promoMsg);
+      expect(parsed, isNull);
+    });
+
+    test('Merchant Categorizer Seed Keywords', () async {
+      final uber = await MerchantCategorizer.categorize('UBER TRIP');
+      expect(uber.$1, 'Traveling');
+
+      final zerodha = await MerchantCategorizer.categorize('ZERODHA BROKING');
+      expect(zerodha.$1, 'SIP & Investments');
+
+      final jio = await MerchantCategorizer.categorize('JIO RECHARGE');
+      expect(jio.$1, 'Bills & Utilities');
+    });
+  });
+}

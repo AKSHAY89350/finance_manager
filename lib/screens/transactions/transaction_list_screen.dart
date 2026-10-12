@@ -6,6 +6,8 @@ import '../../providers/transfer_provider.dart';
 import '../../providers/bank_provider.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/formatters.dart';
+import '../../providers/pending_provider.dart';
+import 'review_inbox_screen.dart';
 import '../expense/add_expense_screen.dart';
 
 class TransactionListScreen extends ConsumerWidget {
@@ -37,6 +39,7 @@ class TransactionListScreen extends ConsumerWidget {
     final expenseState = ref.watch(expenseProvider);
     final incomeState = ref.watch(incomeProvider);
     final transferState = ref.watch(transferProvider);
+    final pendingCount = ref.watch(pendingCountProvider);
 
     return DefaultTabController(
       length: 3,
@@ -44,6 +47,45 @@ class TransactionListScreen extends ConsumerWidget {
         backgroundColor: AppColors.background,
         appBar: AppBar(
           title: const Text('Transactions Ledger'),
+          actions: [
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.inbox_outlined),
+                  tooltip: 'Review Inbox (On-Time SMS)',
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ReviewInboxScreen()),
+                    );
+                  },
+                ),
+                if (pendingCount > 0)
+                  Positioned(
+                    right: 8,
+                    top: 8,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                      child: Text(
+                        '$pendingCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
           bottom: const TabBar(
             indicatorColor: Colors.white,
             labelColor: Colors.white,
