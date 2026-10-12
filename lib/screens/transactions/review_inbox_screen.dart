@@ -20,7 +20,7 @@ class _ReviewInboxScreenState extends ConsumerState<ReviewInboxScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Review Inbox (On-Time SMS)'),
+        title: const Text('Review Inbox'),
         actions: [
           IconButton(
             icon: const Icon(Icons.add_comment_outlined),
@@ -220,49 +220,62 @@ class _ReviewInboxScreenState extends ConsumerState<ReviewInboxScreen> {
               ),
               const SizedBox(height: 14),
 
-              // Action buttons: Confirm, Edit, Discard
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton.icon(
-                    icon: const Icon(Icons.close, size: 16, color: Colors.grey),
-                    label: const Text('Discard', style: TextStyle(color: Colors.grey)),
-                    onPressed: () {
-                      ref.read(pendingNotifierProvider.notifier).discardTransaction(txn);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Transaction discarded')),
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.edit_outlined, size: 16),
-                    label: const Text('Edit'),
-                    onPressed: () => _showEditBottomSheet(context, txn),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green.shade600,
-                      foregroundColor: Colors.white,
-                    ),
-                    icon: const Icon(Icons.check, size: 16),
-                    label: const Text('Confirm'),
-                    onPressed: () async {
-                      await ref.read(pendingNotifierProvider.notifier).confirmTransaction(txn);
-                      if (context.mounted) {
+              // Action buttons: Discard on left, Edit & Confirm on right
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: Row(
+                  children: [
+                    TextButton.icon(
+                      icon: const Icon(Icons.close, size: 14, color: Colors.grey),
+                      label: const Text('Discard', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                      onPressed: () {
+                        ref.read(pendingNotifierProvider.notifier).discardTransaction(txn);
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Saved: ${AppFormatters.currency(txn.amount)} to ${txn.suggestedCategory} (${txn.bank})',
-                            ),
-                            backgroundColor: Colors.green.shade700,
-                          ),
+                          const SnackBar(content: Text('Transaction discarded')),
                         );
-                      }
-                    },
-                  ),
-                ],
+                      },
+                    ),
+                    const SizedBox(width: 12),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.edit_outlined, size: 14),
+                      label: const Text('Edit', style: TextStyle(fontSize: 13)),
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                      ),
+                      onPressed: () => _showEditBottomSheet(context, txn),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green.shade600,
+                        foregroundColor: Colors.white,
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                      icon: const Icon(Icons.check, size: 14),
+                      label: const Text('Confirm', style: TextStyle(fontSize: 13)),
+                      onPressed: () async {
+                        await ref.read(pendingNotifierProvider.notifier).confirmTransaction(txn);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Saved: ${AppFormatters.currency(txn.amount)} to ${txn.suggestedCategory} (${txn.bank})',
+                              ),
+                              backgroundColor: Colors.green.shade700,
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
