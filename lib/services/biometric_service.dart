@@ -39,7 +39,7 @@ class BiometricService {
   }) async {
     try {
       final isSupported = await _auth.isDeviceSupported();
-      if (!isSupported) return true; // Fail open if device has no lock screen
+      if (!isSupported) return false; // Fail closed: require device credential / biometrics
 
       return await _auth.authenticate(
         localizedReason: reason,

@@ -272,6 +272,19 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
     if (_isAuthenticating) return;
     _isAuthenticating = true;
     try {
+      final supported = await BiometricService.isDeviceSupported();
+      if (!supported) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Device security unavailable. Please set up a screen lock (PIN/Password/Fingerprint) in Android Settings.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
       final success = await BiometricService.authenticate();
       if (success && mounted) {
         setState(() => _isLocked = false);

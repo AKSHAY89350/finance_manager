@@ -65,6 +65,12 @@ void main() {
       expect(parsed, isNull);
     });
 
+    test('Anti-Noise Shield: Oversized Payload (>1000 chars) Discarded for ReDoS Prevention', () async {
+      final oversizedMsg = 'Rs 500 debited to Zomato ' + ('A' * 1100);
+      final parsed = await SmsParserService.parseMessage(oversizedMsg);
+      expect(parsed, isNull);
+    });
+
     test('Debit Expense: Rupee symbol and Clean Merchant Name', () async {
       const msg = '₹ 450.00 debited from A/c XX4589 on 12-Oct-26 to ZOMATO. Avl Bal: Rs 45,210.00';
       final parsed = await SmsParserService.parseMessage(msg);

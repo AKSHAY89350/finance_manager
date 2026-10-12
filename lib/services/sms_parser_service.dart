@@ -74,7 +74,8 @@ class SmsParserService {
     String? sender,
   }) async {
     final cleanText = rawMessage.trim();
-    if (cleanText.isEmpty || isOtpOrPromotional(cleanText)) {
+    // Security Guard: Discard empty, oversized (>1000 chars for ReDoS prevention), or promo messages
+    if (cleanText.isEmpty || cleanText.length > 1000 || isOtpOrPromotional(cleanText)) {
       return null;
     }
 
