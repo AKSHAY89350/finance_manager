@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:finance_manager/services/financial_analytics_service.dart';
+import 'package:finance_manager/utils/formatters.dart';
 
 void main() {
   group('FinancialAnalyticsService - Category Classification', () {
@@ -286,6 +287,25 @@ void main() {
 
       expect(report.cashPercent, equals(80.0));
       expect(report.diversificationSummary, contains('Cash Heavy'));
+    });
+  });
+
+  group('AppFormatters - Robust Currency Parsing & Sanitization', () {
+    test('parses Indian number format with commas and currency symbols accurately', () {
+      expect(AppFormatters.parseCurrency('₹1,50,000'), equals(150000.0));
+      expect(AppFormatters.parseCurrency('₹ 25,000.50'), equals(25000.50));
+      expect(AppFormatters.parseCurrency('1,500'), equals(1500.0));
+      expect(AppFormatters.parseCurrency('  ₹ 99,999  '), equals(99999.0));
+      expect(AppFormatters.parseCurrency('\$500'), equals(500.0));
+      expect(AppFormatters.parseCurrency('0'), equals(0.0));
+    });
+
+    test('rejects malformed text safely by returning null', () {
+      expect(AppFormatters.parseCurrency(''), isNull);
+      expect(AppFormatters.parseCurrency('   '), isNull);
+      expect(AppFormatters.parseCurrency('abc'), isNull);
+      expect(AppFormatters.parseCurrency('₹abc'), isNull);
+      expect(AppFormatters.parseCurrency(null), isNull);
     });
   });
 }

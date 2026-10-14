@@ -52,6 +52,15 @@ class AppFormatters {
     return '$sign${currency(amount)}';
   }
 
+  /// Parses a string into a double, stripping currency symbols (₹, $), commas, and whitespace.
+  /// Returns null if text is empty, null, or not a valid number.
+  static double? parseCurrency(String? text) {
+    if (text == null) return null;
+    final cleaned = text.replaceAll('₹', '').replaceAll('\$', '').replaceAll(',', '').replaceAll(' ', '').trim();
+    if (cleaned.isEmpty) return null;
+    return double.tryParse(cleaned);
+  }
+
   // ── Date Formatters ────────────────────────────────────────────
 
   /// Display format: 01 Sep 2026

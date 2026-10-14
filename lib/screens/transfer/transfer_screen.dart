@@ -53,7 +53,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
       return;
     }
 
-    final amount = double.tryParse(_amountController.text.trim());
+    final amount = AppFormatters.parseCurrency(_amountController.text);
     if (amount == null || amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a valid amount')),
@@ -119,7 +119,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                       ),
                       validator: (val) {
                         if (val == null || val.isEmpty) return 'Enter amount';
-                        if (double.tryParse(val) == null) return 'Enter valid number';
+                        if (AppFormatters.parseCurrency(val) == null) return 'Enter valid number';
                         return null;
                       },
                     ),

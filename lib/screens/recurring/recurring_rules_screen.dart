@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -303,7 +304,7 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
                         ),
                         onPressed: () async {
                           final title = titleCtrl.text.trim();
-                          final amount = double.tryParse(amountCtrl.text.trim());
+                          final amount = AppFormatters.parseCurrency(amountCtrl.text.trim());
 
                           if (title.isEmpty) {
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -318,19 +319,21 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
                             return;
                           }
 
-                          // Compute initial nextDueDate
+                          // Compute initial nextDueDate with safe month length capping (e.g. Feb 28, Apr 30)
+                          final daysInCurMonth = DateTime(selectedStartDate.year, selectedStartDate.month + 1, 0).day;
+                          final safeCurDay = math.min(selectedDay, daysInCurMonth);
                           DateTime initialDue = DateTime(
                             selectedStartDate.year,
                             selectedStartDate.month,
-                            selectedDay,
+                            safeCurDay,
                           );
                           // If that day has already passed in selectedStartDate month, move to next month
                           if (initialDue.isBefore(DateTime(selectedStartDate.year, selectedStartDate.month, selectedStartDate.day))) {
-                            initialDue = DateTime(
-                              selectedStartDate.month == 12 ? selectedStartDate.year + 1 : selectedStartDate.year,
-                              selectedStartDate.month == 12 ? 1 : selectedStartDate.month + 1,
-                              selectedDay,
-                            );
+                            final nextYear = selectedStartDate.month == 12 ? selectedStartDate.year + 1 : selectedStartDate.year;
+                            final nextMonth = selectedStartDate.month == 12 ? 1 : selectedStartDate.month + 1;
+                            final daysInNextMonth = DateTime(nextYear, nextMonth + 1, 0).day;
+                            final safeNextDay = math.min(selectedDay, daysInNextMonth);
+                            initialDue = DateTime(nextYear, nextMonth, safeNextDay);
                           }
 
                           final newRule = RecurringRule(

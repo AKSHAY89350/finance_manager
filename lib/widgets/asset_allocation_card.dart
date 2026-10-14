@@ -16,10 +16,11 @@ class AssetAllocationCard extends StatelessWidget {
     const cashColor = Color(0xFF0EA5E9);   // Sky Blue
 
     final total = report.totalNetWealth;
-    final eqFlex = (report.equityPercent * 10).toInt();
-    final debtFlex = (report.debtPercent * 10).toInt();
-    final goldFlex = (report.goldPercent * 10).toInt();
-    final cashFlex = (report.cashPercent * 10).toInt();
+    final eqFlex = (report.equityPercent * 10).round();
+    final debtFlex = (report.debtPercent * 10).round();
+    final goldFlex = (report.goldPercent * 10).round();
+    final cashFlex = (report.cashPercent * 10).round();
+    final hasValidFlex = eqFlex > 0 || debtFlex > 0 || goldFlex > 0 || cashFlex > 0;
 
     return Card(
       elevation: 2,
@@ -87,7 +88,7 @@ class AssetAllocationCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
               child: SizedBox(
                 height: 16,
-                child: total > 0
+                child: (total > 0 && hasValidFlex)
                     ? Row(
                         children: [
                           if (eqFlex > 0)

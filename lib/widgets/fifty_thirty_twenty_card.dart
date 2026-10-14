@@ -19,6 +19,11 @@ class FiftyThirtyTwentyCard extends StatelessWidget {
     final double normWants = totalPct > 0 ? report.wantsPercentage / totalPct : 0.3;
     final double normSavings = totalPct > 0 ? report.savingsPercentage / totalPct : 0.2;
 
+    final int needsFlex = (normNeeds * 1000).round();
+    final int wantsFlex = (normWants * 1000).round();
+    final int savingsFlex = (normSavings * 1000).round();
+    final bool hasValidFlex = needsFlex > 0 || wantsFlex > 0 || savingsFlex > 0;
+
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(
@@ -77,64 +82,66 @@ class FiftyThirtyTwentyCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
               child: SizedBox(
                 height: 18,
-                child: Row(
-                  children: [
-                    if (normNeeds > 0)
-                      Expanded(
-                        flex: (normNeeds * 1000).toInt(),
-                        child: Container(
-                          color: needsColor,
-                          alignment: Alignment.center,
-                          child: normNeeds > 0.15
-                              ? Text(
-                                  '${report.needsPercentage.toStringAsFixed(0)}%',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                )
-                              : null,
-                        ),
-                      ),
-                    if (normWants > 0)
-                      Expanded(
-                        flex: (normWants * 1000).toInt(),
-                        child: Container(
-                          color: wantsColor,
-                          alignment: Alignment.center,
-                          child: normWants > 0.15
-                              ? Text(
-                                  '${report.wantsPercentage.toStringAsFixed(0)}%',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                )
-                              : null,
-                        ),
-                      ),
-                    if (normSavings > 0)
-                      Expanded(
-                        flex: (normSavings * 1000).toInt(),
-                        child: Container(
-                          color: savingsColor,
-                          alignment: Alignment.center,
-                          child: normSavings > 0.15
-                              ? Text(
-                                  '${report.savingsPercentage.toStringAsFixed(0)}%',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                )
-                              : null,
-                        ),
-                      ),
-                  ],
-                ),
+                child: hasValidFlex
+                    ? Row(
+                        children: [
+                          if (needsFlex > 0)
+                            Expanded(
+                              flex: needsFlex,
+                              child: Container(
+                                color: needsColor,
+                                alignment: Alignment.center,
+                                child: normNeeds > 0.15
+                                    ? Text(
+                                        '${report.needsPercentage.toStringAsFixed(0)}%',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      )
+                                    : null,
+                              ),
+                            ),
+                          if (wantsFlex > 0)
+                            Expanded(
+                              flex: wantsFlex,
+                              child: Container(
+                                color: wantsColor,
+                                alignment: Alignment.center,
+                                child: normWants > 0.15
+                                    ? Text(
+                                        '${report.wantsPercentage.toStringAsFixed(0)}%',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      )
+                                    : null,
+                              ),
+                            ),
+                          if (savingsFlex > 0)
+                            Expanded(
+                              flex: savingsFlex,
+                              child: Container(
+                                color: savingsColor,
+                                alignment: Alignment.center,
+                                child: normSavings > 0.15
+                                    ? Text(
+                                        '${report.savingsPercentage.toStringAsFixed(0)}%',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      )
+                                    : null,
+                              ),
+                            ),
+                        ],
+                      )
+                    : Container(color: Colors.grey.shade200),
               ),
             ),
 

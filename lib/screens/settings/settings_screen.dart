@@ -102,7 +102,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ElevatedButton(
             onPressed: () async {
               if (bank.id == null) return;
-              final newBal = double.tryParse(balCtrl.text.trim()) ?? bank.startingBalance;
+              final newBal = AppFormatters.parseCurrency(balCtrl.text) ?? bank.startingBalance;
               final newLast4 = last4Ctrl.text.trim();
               final nav = Navigator.of(ctx);
               final messenger = ScaffoldMessenger.of(context);
@@ -154,7 +154,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ElevatedButton(
             onPressed: () async {
               final name = nameCtrl.text.trim();
-              final bal = double.tryParse(balCtrl.text.trim()) ?? 0.0;
+              final bal = AppFormatters.parseCurrency(balCtrl.text) ?? 0.0;
               if (name.isNotEmpty) {
                 final nav = Navigator.of(ctx);
                 final messenger = ScaffoldMessenger.of(context);
@@ -212,7 +212,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ElevatedButton(
             onPressed: () async {
               if (asset.id == null) return;
-              final newBal = double.tryParse(balCtrl.text.trim()) ?? asset.startingBalance;
+              final newBal = AppFormatters.parseCurrency(balCtrl.text) ?? asset.startingBalance;
               final nav = Navigator.of(ctx);
               final messenger = ScaffoldMessenger.of(context);
 
@@ -266,7 +266,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ElevatedButton(
             onPressed: () async {
               final name = nameCtrl.text.trim();
-              final bal = double.tryParse(balCtrl.text.trim()) ?? 0.0;
+              final bal = AppFormatters.parseCurrency(balCtrl.text) ?? 0.0;
               if (name.isNotEmpty) {
                 final nav = Navigator.of(ctx);
                 final messenger = ScaffoldMessenger.of(context);

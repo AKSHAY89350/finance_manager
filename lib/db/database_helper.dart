@@ -1198,5 +1198,6 @@ class DatabaseHelper {
     await db.delete(AppConstants.tableExtraCredit);
     await db.delete(AppConstants.tableTransfers);
     await db.delete(AppConstants.tableRecurringRules);
+    await db.delete(AppConstants.tablePendingTransactions);
   }
 }
