@@ -104,6 +104,18 @@ class DatabaseHelper {
           ON ${AppConstants.tableRecurringRules}(next_due_date, is_active)
       ''');
     }
+    if (oldVersion < 4) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS ${AppConstants.tableInitialInvestments} (
+          id               INTEGER PRIMARY KEY AUTOINCREMENT,
+          asset_name       TEXT    UNIQUE NOT NULL,
+          starting_balance REAL    NOT NULL DEFAULT 0,
+          category         TEXT    NOT NULL DEFAULT 'SIP & Investments',
+          notes            TEXT
+        )
+      ''');
+      await _seedInitialInvestments(db);
+    }
   }
 
   // ── Create all tables ─────────────────────────────────────────
@@ -257,12 +269,48 @@ class DatabaseHelper {
       CREATE INDEX IF NOT EXISTS idx_recurring_due
         ON ${AppConstants.tableRecurringRules}(next_due_date, is_active)
     ''');
+
+    // Table 10: initial_investments (Starting balances for investment instruments)
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${AppConstants.tableInitialInvestments} (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        asset_name       TEXT    UNIQUE NOT NULL,
+        starting_balance REAL    NOT NULL DEFAULT 0,
+        category         TEXT    NOT NULL DEFAULT 'SIP & Investments',
+        notes            TEXT
+      )
+    ''');
   }
 
   // ── Seed default data (runs only on first install) ────────────
   Future<void> _seedData(Database db) async {
     await _seedBanks(db);
     await _seedCategories(db);
+    await _seedInitialInvestments(db);
+  }
+
+  Future<void> _seedInitialInvestments(Database db) async {
+    final defaultAssets = [
+      'Mutual Funds (SIP)',
+      'Stocks / Shares',
+      'Fixed Deposit (FD)',
+      'Recurring Deposit (RD)',
+      'PPF',
+      'NPS',
+      'Gold / SGB',
+      'Other Investment',
+    ];
+    for (final asset in defaultAssets) {
+      await db.insert(
+        AppConstants.tableInitialInvestments,
+        {
+          'asset_name': asset,
+          'starting_balance': 0.0,
+          'category': 'SIP & Investments',
+        },
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
   }
 
   Future<void> _seedBanks(Database db) async {
@@ -675,8 +723,8 @@ class DatabaseHelper {
   // (Replicates Excel Investments sheet)
   // ═══════════════════════════════════════════════════════════════
 
-  /// Total invested (YTD or all time).
-  Future<double> getTotalInvested({int? year}) async {
+  /// Total invested (including initial investment holdings).
+  Future<double> getTotalInvested({int? year, bool includeStartingBalance = true}) async {
     final db   = await database;
     final args = <dynamic>[];
     String extra = '';
@@ -690,11 +738,19 @@ class DatabaseHelper {
       "WHERE category = 'SIP & Investments'$extra",
       args,
     );
-    return (result.first['total'] as num?)?.toDouble() ?? 0.0;
+    final expenseTotal = (result.first['total'] as num?)?.toDouble() ?? 0.0;
+    if (includeStartingBalance) {
+      final initialTotal = await getTotalInitialInvestments();
+      return initialTotal + expenseTotal;
+    }
+    return expenseTotal;
   }
 
-  /// Asset allocation: per investment type totals.
-  Future<List<Map<String, dynamic>>> getInvestmentAllocation({int? year}) async {
+  /// Asset allocation: per investment type totals (Starting Balance + Logged Expenses).
+  Future<List<Map<String, dynamic>>> getInvestmentAllocation({
+    int? year,
+    bool includeStartingBalance = true,
+  }) async {
     final db   = await database;
     final args = <dynamic>[];
     String extra = '';
@@ -702,15 +758,128 @@ class DatabaseHelper {
       extra = ' AND date >= ? AND date < ?';
       args.addAll(['$year-01-01', '${year + 1}-01-01']);
     }
-    return await db.rawQuery(
+    final expenseRows = await db.rawQuery(
       "SELECT sub_category, "
       "  COALESCE(SUM(amount), 0) as total, "
       "  COUNT(*) as txn_count "
       "FROM ${AppConstants.tableExpenses} "
       "WHERE category = 'SIP & Investments'$extra "
-      "GROUP BY sub_category "
-      "ORDER BY total DESC",
+      "GROUP BY sub_category",
       args,
+    );
+
+    if (!includeStartingBalance) {
+      final list = List<Map<String, dynamic>>.from(expenseRows);
+      list.sort((a, b) => (b['total'] as num).compareTo(a['total'] as num));
+      return list;
+    }
+
+    final initialList = await getAllInitialInvestments();
+    final Map<String, Map<String, dynamic>> combined = {};
+
+    for (final init in initialList) {
+      final name = init['asset_name'] as String;
+      final start = (init['starting_balance'] as num?)?.toDouble() ?? 0.0;
+      combined[name.toLowerCase()] = {
+        'sub_category': name,
+        'total': start,
+        'txn_count': 0,
+        'starting_balance': start,
+      };
+    }
+
+    for (final exp in expenseRows) {
+      final name = (exp['sub_category'] as String?) ?? 'Other Investment';
+      final total = (exp['total'] as num).toDouble();
+      final count = (exp['txn_count'] as int?) ?? 0;
+      final key = name.toLowerCase();
+
+      if (combined.containsKey(key)) {
+        combined[key]!['total'] = (combined[key]!['total'] as double) + total;
+        combined[key]!['txn_count'] = (combined[key]!['txn_count'] as int) + count;
+      } else {
+        combined[key] = {
+          'sub_category': name,
+          'total': total,
+          'txn_count': count,
+          'starting_balance': 0.0,
+        };
+      }
+    }
+
+    final result = combined.values.where((item) => (item['total'] as double) > 0).toList();
+    result.sort((a, b) => (b['total'] as num).compareTo(a['total'] as num));
+    return result;
+  }
+
+  // ── Initial Investment CRUD ─────────────────────────────────────
+
+  /// Get all initial investment instruments and starting balances.
+  Future<List<Map<String, dynamic>>> getAllInitialInvestments() async {
+    final db = await database;
+    return await db.query(AppConstants.tableInitialInvestments, orderBy: 'id ASC');
+  }
+
+  /// Total sum of all initial investment starting balances.
+  Future<double> getTotalInitialInvestments() async {
+    final db = await database;
+    final result = await db.rawQuery(
+      'SELECT COALESCE(SUM(starting_balance), 0) as total FROM ${AppConstants.tableInitialInvestments}',
+    );
+    return (result.first['total'] as num?)?.toDouble() ?? 0.0;
+  }
+
+  /// Live total value for a single investment instrument (Starting Balance + Expenses).
+  Future<double> getLiveInvestmentHolding(String assetName) async {
+    final db = await database;
+    final assetRows = await db.query(
+      AppConstants.tableInitialInvestments,
+      where: 'LOWER(asset_name) = ?',
+      whereArgs: [assetName.toLowerCase()],
+      limit: 1,
+    );
+    final startBal = assetRows.isNotEmpty
+        ? (assetRows.first['starting_balance'] as num?)?.toDouble() ?? 0.0
+        : 0.0;
+
+    final expenseRes = await db.rawQuery(
+      "SELECT COALESCE(SUM(amount), 0) as total "
+      "FROM ${AppConstants.tableExpenses} "
+      "WHERE category = 'SIP & Investments' AND LOWER(sub_category) = ?",
+      [assetName.toLowerCase()],
+    );
+    final expenseTotal = (expenseRes.first['total'] as num?)?.toDouble() ?? 0.0;
+    return startBal + expenseTotal;
+  }
+
+  /// Insert a new initial investment asset.
+  Future<int> insertInitialInvestment(Map<String, dynamic> data) async {
+    final db = await database;
+    return await db.insert(
+      AppConstants.tableInitialInvestments,
+      data,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Update starting balance for an initial investment.
+  Future<int> updateInitialInvestmentBalance(int id, double balance) async {
+    final db = await database;
+    return await db.update(
+      AppConstants.tableInitialInvestments,
+      {'starting_balance': balance},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Delete an initial investment asset.
+  Future<int> deleteInitialInvestment(int id) async {
+    final db = await database;
+    return await db.delete(
+      AppConstants.tableInitialInvestments,
+      where: 'id = ?',
+      whereArgs: [id],
     );
   }
 

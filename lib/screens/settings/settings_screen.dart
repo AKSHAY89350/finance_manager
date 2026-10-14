@@ -5,10 +5,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../db/database_helper.dart';
 import '../../models/bank.dart';
+import '../../models/initial_investment.dart';
 import '../../models/merchant_rule.dart';
 import '../../providers/bank_provider.dart';
 import '../../providers/expense_provider.dart';
 import '../../providers/income_provider.dart';
+import '../../providers/investment_provider.dart';
 import '../../providers/transfer_provider.dart';
 import '../../services/biometric_service.dart';
 import '../../utils/app_colors.dart';
@@ -42,18 +44,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _toggleBiometric(bool value) async {
-    if (value) {
-      final success = await BiometricService.authenticate(
-        reason: 'Authenticate to enable biometric app lock',
-      );
-      if (!success) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Biometric verification failed')),
-          );
-        }
-        return;
+    final success = await BiometricService.authenticate(
+      reason: value
+          ? 'Authenticate to enable biometric app lock'
+          : 'Authenticate to disable biometric app lock',
+    );
+    if (!success) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Authentication failed. Lock setting unchanged.')),
+        );
       }
+      return;
     }
     await BiometricService.setBiometricEnabled(value);
     if (mounted) setState(() => _isBiometricEnabled = value);
@@ -166,6 +168,118 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               }
             },
             child: const Text('Add Bank'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showInvestmentEditDialog(BuildContext context, InitialInvestment asset) {
+    final balCtrl = TextEditingController(text: asset.startingBalance.toString());
+    final notesCtrl = TextEditingController(text: asset.notes ?? '');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Edit ${asset.assetName} Starting Value'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: balCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Initial Holding / Starting Value (₹)',
+                prefixText: '₹ ',
+                helperText: 'Existing investment value before tracking in app',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: notesCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Notes / Folio (Optional)',
+                hintText: 'e.g. Zerodha, Groww, Folio #',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (asset.id == null) return;
+              final newBal = double.tryParse(balCtrl.text.trim()) ?? asset.startingBalance;
+              final nav = Navigator.of(ctx);
+              final messenger = ScaffoldMessenger.of(context);
+
+              await ref.read(investmentProvider.notifier).updateStartingBalance(asset.id!, newBal);
+
+              if (mounted) {
+                nav.pop();
+                messenger.showSnackBar(
+                  SnackBar(content: Text('Updated ${asset.assetName} starting value')),
+                );
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddInvestmentDialog(BuildContext context) {
+    final nameCtrl = TextEditingController();
+    final balCtrl = TextEditingController(text: '0');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add Investment Instrument'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Instrument Name (e.g. Real Estate, Crypto, US Stocks)',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: balCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Initial Holding Value (₹)',
+                prefixText: '₹ ',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () async {
+              final name = nameCtrl.text.trim();
+              final bal = double.tryParse(balCtrl.text.trim()) ?? 0.0;
+              if (name.isNotEmpty) {
+                final nav = Navigator.of(ctx);
+                final messenger = ScaffoldMessenger.of(context);
+                await ref.read(investmentProvider.notifier).addInvestment(name, bal);
+                if (mounted) {
+                  nav.pop();
+                  messenger.showSnackBar(
+                    SnackBar(content: Text('Added $name')),
+                  );
+                }
+              }
+            },
+            child: const Text('Add Instrument'),
           ),
         ],
       ),
@@ -444,6 +558,47 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           onPressed: () => _showAddBankDialog(context),
                           icon: const Icon(Icons.add_rounded),
                           label: const Text('Add Bank Account'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+                _sectionHeader('Investment Portfolio Management'),
+                ref.watch(investmentProvider).when(
+                  loading: () => const Center(child: Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator())),
+                  error: (e, _) => Padding(padding: const EdgeInsets.all(16.0), child: Text('Error: $e')),
+                  data: (holdings) => Column(
+                    children: [
+                      ...holdings.map((item) {
+                        return Card(
+                          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: AppColors.investment.withValues(alpha: 0.15),
+                              child: const Icon(Icons.trending_up_rounded, color: AppColors.investment, size: 20),
+                            ),
+                            title: Text(item.asset.assetName, style: const TextStyle(fontWeight: FontWeight.w600)),
+                            subtitle: Text(
+                              'Start Bal: ${AppFormatters.currency(item.asset.startingBalance)} • Live Total: ${AppFormatters.currency(item.liveTotal)}',
+                            ),
+                            trailing: TextButton.icon(
+                              icon: const Icon(Icons.edit, size: 16),
+                              label: const Text('Edit'),
+                              onPressed: () {
+                                _showInvestmentEditDialog(context, item.asset);
+                              },
+                            ),
+                          ),
+                        );
+                      }),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                        child: OutlinedButton.icon(
+                          onPressed: () => _showAddInvestmentDialog(context),
+                          icon: const Icon(Icons.add_rounded),
+                          label: const Text('Add Investment Asset'),
                         ),
                       ),
                     ],

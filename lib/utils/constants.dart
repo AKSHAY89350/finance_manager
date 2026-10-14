@@ -169,7 +169,7 @@ class AppConstants {
 
   // ── SQLite DB Settings ─────────────────────────────────────────
   static const String dbName    = 'finance_manager.db';
-  static const int    dbVersion = 3;
+  static const int    dbVersion = 4;
 
   // ── Table Names ────────────────────────────────────────────────
   static const String tableExpenses            = 'expenses';
@@ -180,7 +180,8 @@ class AppConstants {
   static const String tableSubCategories       = 'sub_categories';
   static const String tablePendingTransactions = 'pending_transactions';
   static const String tableMerchantRules       = 'merchant_category_rules';
-  static const String tableRecurringRules       = 'recurring_rules';
+  static const String tableRecurringRules      = 'recurring_rules';
+  static const String tableInitialInvestments  = 'initial_investments';
 
   // ── Recurring Auto-Debit Types ─────────────────────────────────
   static const List<String> recurringTypes = [

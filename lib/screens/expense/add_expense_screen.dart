@@ -51,6 +51,7 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> {
 
   Future<void> _loadSubCategories(String category) async {
     final subs = await DatabaseHelper.instance.getSubCategories(category);
+    if (!mounted) return;
     setState(() {
       _subCategories = subs;
       if (widget.initialExpense != null && widget.initialExpense!.category == category) {

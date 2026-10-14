@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../db/database_helper.dart';
 import '../../providers/expense_provider.dart';
+import '../../providers/investment_provider.dart';
 import '../../screens/main_scaffold.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/constants.dart';
@@ -90,13 +91,16 @@ class _InvestmentScreenState extends ConsumerState<InvestmentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Auto-refresh when switching to Invest tab (index 3) or when expenses update
+    // Auto-refresh when switching to Invest tab (index 3), or when expenses/investments update
     ref.listen(selectedTabProvider, (prev, next) {
       if (next == 3) {
         _loadInvestmentData();
       }
     });
     ref.listen(expenseProvider, (prev, next) {
+      _loadInvestmentData();
+    });
+    ref.listen(investmentProvider, (prev, next) {
       _loadInvestmentData();
     });
 
@@ -162,7 +166,7 @@ class _InvestmentScreenState extends ConsumerState<InvestmentScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'TOTAL INVESTED (YTD)',
+                              'TOTAL PORTFOLIO HOLDINGS',
                               style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.1),
                             ),
                             Icon(Icons.auto_graph_rounded, color: Colors.white70, size: 20),
@@ -175,7 +179,7 @@ class _InvestmentScreenState extends ConsumerState<InvestmentScreen> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          '$_totalTxnCount verified investments across asset classes',
+                          'Starting holdings + $_totalTxnCount verified investments across asset classes',
                           style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 12),
                         ),
                       ],

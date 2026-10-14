@@ -127,8 +127,39 @@ class ExportHelper {
       ]);
     }
 
-    // Save File to temporary cache storage (CWE-312 prevention)
+    // 5. Sheet: Initial Investment Holdings
+    final Sheet investSheet = excel['Investments'];
+    investSheet.appendRow([
+      TextCellValue('Asset / Instrument'),
+      TextCellValue('Starting Balance'),
+      TextCellValue('Live Total Holding'),
+      TextCellValue('Notes'),
+    ]);
+
+    final initialInvestments = await DatabaseHelper.instance.getAllInitialInvestments();
+    for (final inv in initialInvestments) {
+      final name = inv['asset_name'] as String;
+      final start = (inv['starting_balance'] as num).toDouble();
+      final live = await DatabaseHelper.instance.getLiveInvestmentHolding(name);
+      final notes = (inv['notes'] as String?) ?? '';
+      investSheet.appendRow([
+        TextCellValue(name),
+        DoubleCellValue(start),
+        DoubleCellValue(live),
+        TextCellValue(_sanitizeFormula(notes)),
+      ]);
+    }
+
+    // Save File to temporary cache storage (with CWE-459 cache cleanup)
     final dir = await getTemporaryDirectory();
+    try {
+      for (final entity in dir.listSync()) {
+        if (entity is File && entity.path.contains('Finance_Manager_Backup_')) {
+          entity.deleteSync();
+        }
+      }
+    } catch (_) {}
+
     final fileName = 'Finance_Manager_Backup_${AppFormatters.dbDate(DateTime.now())}.xlsx';
     final file = File('${dir.path}/$fileName');
 
