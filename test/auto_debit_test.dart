@@ -105,5 +105,18 @@ void main() {
       expect(dueFuture.isDue, isFalse);
       expect(dueFuture.daysUntilDue, greaterThan(0));
     });
+
+    test('calculateNextDueDate consecutive monthly catch-up simulation', () {
+      // User offline for 3 months: July to October
+      var due = '2026-07-10';
+      due = AutoDebitService.calculateNextDueDate(10, due);
+      expect(due, equals('2026-08-10'));
+      due = AutoDebitService.calculateNextDueDate(10, due);
+      expect(due, equals('2026-09-10'));
+      due = AutoDebitService.calculateNextDueDate(10, due);
+      expect(due, equals('2026-10-10'));
+
+      expect(AutoDebitService.maxCatchUpCycles, equals(12));
+    });
   });
 }

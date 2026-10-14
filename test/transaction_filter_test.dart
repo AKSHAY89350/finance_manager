@@ -105,7 +105,7 @@ void main() {
       expect(foodFilter.matchesExpense(expense2), isFalse);
     });
 
-    test('Search Query: By description, merchant name, and amount', () {
+    test('Search Query: By description, merchant name, and amount with symbols', () {
       final zomatoSearch = const TransactionFilter().copyWith(searchQuery: 'zomato');
       expect(zomatoSearch.matchesExpense(expense1), isTrue);
       expect(zomatoSearch.matchesExpense(expense2), isFalse);
@@ -113,6 +113,16 @@ void main() {
       final amtSearch = const TransactionFilter().copyWith(searchQuery: '2500');
       expect(amtSearch.matchesExpense(expense1), isFalse);
       expect(amtSearch.matchesExpense(expense2), isTrue);
+
+      // Testing ₹ symbol and comma search resilience
+      final rupeeSearch = const TransactionFilter().copyWith(searchQuery: '₹2500');
+      expect(rupeeSearch.matchesExpense(expense2), isTrue);
+
+      final commaSearch = const TransactionFilter().copyWith(searchQuery: '50,000');
+      expect(commaSearch.matchesIncome(income1), isTrue);
+
+      final rupeeCommaSearch = const TransactionFilter().copyWith(searchQuery: '₹50,000');
+      expect(rupeeCommaSearch.matchesIncome(income1), isTrue);
 
       final salarySearch = const TransactionFilter().copyWith(searchQuery: 'salary');
       expect(salarySearch.matchesIncome(income1), isTrue);

@@ -249,6 +249,31 @@ class TransactionFilter {
     return true;
   }
 
+  bool _matchesQuery(
+    String query, {
+    required List<String?> textFields,
+    required double amount,
+  }) {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return true;
+
+    for (final text in textFields) {
+      if (text != null && text.toLowerCase().contains(q)) return true;
+    }
+
+    // Amount match: test raw number, formatted currency, and clean query without symbols/commas
+    final rawAmt = amount.toString();
+    final formattedAmt = AppFormatters.currency(amount).toLowerCase();
+    final cleanQ = q.replaceAll('₹', '').replaceAll(',', '').trim();
+
+    if (rawAmt.contains(q) || formattedAmt.contains(q)) return true;
+    if (cleanQ.isNotEmpty && (rawAmt.contains(cleanQ) || formattedAmt.contains(cleanQ))) {
+      return true;
+    }
+
+    return false;
+  }
+
   bool matchesExpense(Expense e) {
     final dt = AppFormatters.parseDbDate(e.date);
     if (!matchesDate(dt)) return false;
@@ -257,13 +282,13 @@ class TransactionFilter {
     if (!matchesAmount(e.amount)) return false;
 
     if (searchQuery.trim().isNotEmpty) {
-      final q = searchQuery.trim().toLowerCase();
-      final inCat = e.category.toLowerCase().contains(q);
-      final inSub = e.subCategory?.toLowerCase().contains(q) ?? false;
-      final inDesc = e.description?.toLowerCase().contains(q) ?? false;
-      final inBank = e.bank.toLowerCase().contains(q);
-      final inAmt = e.amount.toString().contains(q);
-      if (!inCat && !inSub && !inDesc && !inBank && !inAmt) return false;
+      if (!_matchesQuery(
+        searchQuery,
+        textFields: [e.category, e.subCategory, e.description, e.bank],
+        amount: e.amount,
+      )) {
+        return false;
+      }
     }
 
     return true;
@@ -277,12 +302,13 @@ class TransactionFilter {
     if (!matchesAmount(i.amount)) return false;
 
     if (searchQuery.trim().isNotEmpty) {
-      final q = searchQuery.trim().toLowerCase();
-      final inMode = i.mode.toLowerCase().contains(q);
-      final inUser = i.userName?.toLowerCase().contains(q) ?? false;
-      final inBank = i.bank.toLowerCase().contains(q);
-      final inAmt = i.amount.toString().contains(q);
-      if (!inMode && !inUser && !inBank && !inAmt) return false;
+      if (!_matchesQuery(
+        searchQuery,
+        textFields: [i.mode, i.userName, i.bank],
+        amount: i.amount,
+      )) {
+        return false;
+      }
     }
 
     return true;
@@ -300,12 +326,13 @@ class TransactionFilter {
     if (!matchesAmount(t.amount)) return false;
 
     if (searchQuery.trim().isNotEmpty) {
-      final q = searchQuery.trim().toLowerCase();
-      final inFrom = t.fromBank.toLowerCase().contains(q);
-      final inTo = t.toBank.toLowerCase().contains(q);
-      final inDesc = t.description?.toLowerCase().contains(q) ?? false;
-      final inAmt = t.amount.toString().contains(q);
-      if (!inFrom && !inTo && !inDesc && !inAmt) return false;
+      if (!_matchesQuery(
+        searchQuery,
+        textFields: [t.fromBank, t.toBank, t.description],
+        amount: t.amount,
+      )) {
+        return false;
+      }
     }
 
     return true;
@@ -332,13 +359,13 @@ class TransactionFilter {
     if (!matchesAmount(u.amount)) return false;
 
     if (searchQuery.trim().isNotEmpty) {
-      final q = searchQuery.trim().toLowerCase();
-      final inTitle = u.title.toLowerCase().contains(q);
-      final inSub = u.subtitle?.toLowerCase().contains(q) ?? false;
-      final inBank = u.bank.toLowerCase().contains(q);
-      final inCat = u.category?.toLowerCase().contains(q) ?? false;
-      final inAmt = u.amount.toString().contains(q);
-      if (!inTitle && !inSub && !inBank && !inCat && !inAmt) return false;
+      if (!_matchesQuery(
+        searchQuery,
+        textFields: [u.title, u.subtitle, u.bank, u.category],
+        amount: u.amount,
+      )) {
+        return false;
+      }
     }
 
     return true;

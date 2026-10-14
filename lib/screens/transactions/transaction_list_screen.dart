@@ -436,7 +436,7 @@ class _TransactionListScreenState extends ConsumerState<TransactionListScreen>
         final item = items[index];
 
         return Dismissible(
-          key: Key('unified_${item.kind.name}_${item.id}_$index'),
+          key: ValueKey('unified_${item.kind.name}_${item.id ?? item.hashCode}'),
           direction: DismissDirection.endToStart,
           confirmDismiss: (_) => _confirmDelete(context, item.kind.name),
           background: Container(
@@ -560,7 +560,7 @@ class _TransactionListScreenState extends ConsumerState<TransactionListScreen>
       itemBuilder: (context, index) {
         final expense = expenses[index];
         return Dismissible(
-          key: Key('expense_${expense.id}_$index'),
+          key: ValueKey('expense_${expense.id ?? expense.hashCode}'),
           direction: DismissDirection.endToStart,
           confirmDismiss: (_) => _confirmDelete(context, 'expense'),
           background: Container(
@@ -681,7 +681,7 @@ class _TransactionListScreenState extends ConsumerState<TransactionListScreen>
       itemBuilder: (context, index) {
         final income = incomes[index];
         return Dismissible(
-          key: Key('income_${income.id}_$index'),
+          key: ValueKey('income_${income.id ?? income.hashCode}'),
           direction: DismissDirection.endToStart,
           confirmDismiss: (_) => _confirmDelete(context, 'income'),
           background: Container(
@@ -788,7 +788,7 @@ class _TransactionListScreenState extends ConsumerState<TransactionListScreen>
       itemBuilder: (context, index) {
         final transfer = transfers[index];
         return Dismissible(
-          key: Key('transfer_${transfer.id}_$index'),
+          key: ValueKey('transfer_${transfer.id ?? transfer.hashCode}'),
           direction: DismissDirection.endToStart,
           confirmDismiss: (_) => _confirmDelete(context, 'transfer'),
           background: Container(

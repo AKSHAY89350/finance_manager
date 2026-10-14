@@ -38,6 +38,11 @@ class AutoDebitExecutionReport {
 class AutoDebitService {
   AutoDebitService._();
 
+  static Future<AutoDebitExecutionReport>? _activeBatchProcessing;
+
+  /// Safety cap: prevents runaway deductions if an old start date was entered
+  static const int maxCatchUpCycles = 12;
+
   /// Calculates the next monthly due date keeping the intended day of the month.
   /// Handles 28, 29, 30, and 31-day months properly (e.g. 31st Jan -> 28th Feb -> 31st Mar).
   static String calculateNextDueDate(int dayOfMonth, String currentDueDateStr) {
@@ -59,7 +64,24 @@ class AutoDebitService {
   /// Before any deduction, checks the live balance of the configured bank account.
   /// If balance >= amount: automatically records the expense, updates balance, and advances due date.
   /// If balance < amount: skips deduction and marks rule as INSUFFICIENT_BALANCE so account never overdrafts.
+  ///
+  /// Concurrency Guard: If an execution is already in progress, concurrent callers await
+  /// the active Future rather than triggering duplicate expense deductions.
   static Future<AutoDebitExecutionReport> processDueAutoDebits({DateTime? asOfDate}) async {
+    if (_activeBatchProcessing != null) {
+      return await _activeBatchProcessing!;
+    }
+
+    final future = _processDueAutoDebitsInternal(asOfDate: asOfDate);
+    _activeBatchProcessing = future;
+    try {
+      return await future;
+    } finally {
+      _activeBatchProcessing = null;
+    }
+  }
+
+  static Future<AutoDebitExecutionReport> _processDueAutoDebitsInternal({DateTime? asOfDate}) async {
     final effectiveDate = asOfDate ?? DateTime.now();
     final asOfDateStr = AppFormatters.dbDate(effectiveDate);
 
@@ -68,70 +90,77 @@ class AutoDebitService {
     final List<AutoDebitResult> skippedLowBalance = [];
 
     for (final map in dueRuleMaps) {
-      final rule = RecurringRule.fromMap(map);
+      var rule = RecurringRule.fromMap(map);
+      int cycleCount = 0;
 
-      // Check current live balance of the configured bank account
-      final liveBalance = await DatabaseHelper.instance.getLiveBalance(rule.bank);
+      // Safe multi-month catch-up loop (e.g. user was offline 2 months)
+      while (rule.nextDueDate.compareTo(asOfDateStr) <= 0 && cycleCount < maxCatchUpCycles) {
+        cycleCount++;
 
-      if (liveBalance >= rule.amount) {
-        // Sufficient balance -> Execute deduction
-        final expense = Expense(
-          date: rule.nextDueDate,
-          category: rule.category,
-          subCategory: rule.subCategory,
-          amount: rule.amount,
-          bank: rule.bank,
-          description: '[Auto-Debit] ${rule.title}',
-        );
-        await DatabaseHelper.instance.insertExpense(expense.toMap());
+        // Check current live balance of the configured bank account before this cycle
+        final liveBalance = await DatabaseHelper.instance.getLiveBalance(rule.bank);
 
-        final nextDue = calculateNextDueDate(rule.dayOfMonth, rule.nextDueDate);
-        final statusMessage =
-            'Auto-debited ${AppFormatters.currency(rule.amount)} from ${rule.bank} on $asOfDateStr.';
+        if (liveBalance >= rule.amount) {
+          // Sufficient balance -> Execute deduction
+          final expense = Expense(
+            date: rule.nextDueDate,
+            category: rule.category,
+            subCategory: rule.subCategory,
+            amount: rule.amount,
+            bank: rule.bank,
+            description: '[Auto-Debit] ${rule.title}',
+          );
+          await DatabaseHelper.instance.insertExpense(expense.toMap());
 
-        await DatabaseHelper.instance.updateRecurringRule(rule.id!, {
-          'last_processed_date': asOfDateStr,
-          'next_due_date': nextDue,
-          'last_status': 'SUCCESS',
-          'last_status_message': statusMessage,
-        });
+          final nextDue = calculateNextDueDate(rule.dayOfMonth, rule.nextDueDate);
+          final statusMessage =
+              'Auto-debited ${AppFormatters.currency(rule.amount)} from ${rule.bank} for ${rule.nextDueDate}.';
 
-        final updatedRule = rule.copyWith(
-          lastProcessedDate: asOfDateStr,
-          nextDueDate: nextDue,
-          lastStatus: 'SUCCESS',
-          lastStatusMessage: statusMessage,
-        );
+          await DatabaseHelper.instance.updateRecurringRule(rule.id!, {
+            'last_processed_date': asOfDateStr,
+            'next_due_date': nextDue,
+            'last_status': 'SUCCESS',
+            'last_status_message': statusMessage,
+          });
 
-        executed.add(AutoDebitResult(
-          rule: updatedRule,
-          success: true,
-          message: statusMessage,
-          requiredAmount: rule.amount,
-          availableBalance: liveBalance,
-        ));
-      } else {
-        // Insufficient balance -> Do NOT deduct, flag warning
-        final warningMessage =
-            'Insufficient balance in ${rule.bank}. Required: ${AppFormatters.currency(rule.amount)}, Available: ${AppFormatters.currency(liveBalance)}.';
+          rule = rule.copyWith(
+            lastProcessedDate: asOfDateStr,
+            nextDueDate: nextDue,
+            lastStatus: 'SUCCESS',
+            lastStatusMessage: statusMessage,
+          );
 
-        await DatabaseHelper.instance.updateRecurringRule(rule.id!, {
-          'last_status': 'INSUFFICIENT_BALANCE',
-          'last_status_message': warningMessage,
-        });
+          executed.add(AutoDebitResult(
+            rule: rule,
+            success: true,
+            message: statusMessage,
+            requiredAmount: rule.amount,
+            availableBalance: liveBalance,
+          ));
+        } else {
+          // Insufficient balance -> Do NOT deduct, flag warning and stop catch-up
+          final warningMessage =
+              'Insufficient balance in ${rule.bank}. Required: ${AppFormatters.currency(rule.amount)}, Available: ${AppFormatters.currency(liveBalance)}.';
 
-        final updatedRule = rule.copyWith(
-          lastStatus: 'INSUFFICIENT_BALANCE',
-          lastStatusMessage: warningMessage,
-        );
+          await DatabaseHelper.instance.updateRecurringRule(rule.id!, {
+            'last_status': 'INSUFFICIENT_BALANCE',
+            'last_status_message': warningMessage,
+          });
 
-        skippedLowBalance.add(AutoDebitResult(
-          rule: updatedRule,
-          success: false,
-          message: warningMessage,
-          requiredAmount: rule.amount,
-          availableBalance: liveBalance,
-        ));
+          rule = rule.copyWith(
+            lastStatus: 'INSUFFICIENT_BALANCE',
+            lastStatusMessage: warningMessage,
+          );
+
+          skippedLowBalance.add(AutoDebitResult(
+            rule: rule,
+            success: false,
+            message: warningMessage,
+            requiredAmount: rule.amount,
+            availableBalance: liveBalance,
+          ));
+          break; // Stop further catch-up cycles until user funds the account
+        }
       }
     }
 
@@ -144,6 +173,11 @@ class AutoDebitService {
 
   /// Manually triggers processing of a single recurring rule (e.g. user taps "Retry" after depositing money).
   static Future<AutoDebitResult> executeSingleRule(int ruleId, {DateTime? asOfDate}) async {
+    // If a batch auto-debit process is running, wait for it first
+    if (_activeBatchProcessing != null) {
+      await _activeBatchProcessing!;
+    }
+
     final effectiveDate = asOfDate ?? DateTime.now();
     final asOfDateStr = AppFormatters.dbDate(effectiveDate);
 
