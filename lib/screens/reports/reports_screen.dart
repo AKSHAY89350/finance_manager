@@ -7,8 +7,13 @@ import '../../screens/main_scaffold.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/constants.dart';
 import '../../utils/formatters.dart';
+import '../../providers/financial_health_provider.dart';
+import '../../widgets/asset_allocation_card.dart';
 import '../../widgets/category_pie_chart.dart';
+import '../../widgets/emergency_runway_card.dart';
+import '../../widgets/fifty_thirty_twenty_card.dart';
 import '../../widgets/monthly_bar_chart.dart';
+import '../../widgets/savings_rate_card.dart';
 
 class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({super.key});
@@ -31,7 +36,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> with SingleTicker
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _loadReportData();
   }
 
@@ -114,6 +119,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> with SingleTicker
           tabs: const [
             Tab(icon: Icon(Icons.pie_chart_outline), text: 'Category Chart'),
             Tab(icon: Icon(Icons.table_chart_outlined), text: 'Monthly Matrix'),
+            Tab(icon: Icon(Icons.health_and_safety_outlined), text: 'Financial Health'),
           ],
         ),
       ),
@@ -124,6 +130,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> with SingleTicker
               children: [
                 _buildCategoryChartView(),
                 _buildMonthlyMatrixView(),
+                _buildFinancialHealthView(),
               ],
             ),
     );
@@ -339,6 +346,91 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> with SingleTicker
             ),
           );
         }),
+      ],
+    );
+  }
+
+  Widget _buildFinancialHealthView() {
+    final years = _availableYears();
+    final healthAsync = ref.watch(financialHealthProvider(HealthFilter(_selectedYear, _selectedMonth)));
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // Month and Year Filters
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            DropdownButton<int>(
+              value: _selectedMonth,
+              items: List.generate(12, (index) {
+                return DropdownMenuItem(
+                  value: index + 1,
+                  child: Text(AppConstants.monthNames[index]),
+                );
+              }),
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() => _selectedMonth = val);
+                  _loadReportData();
+                }
+              },
+            ),
+            DropdownButton<int>(
+              value: _selectedYear,
+              items: years.map((y) {
+                return DropdownMenuItem(value: y, child: Text('$y'));
+              }).toList(),
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() => _selectedYear = val);
+                  _loadReportData();
+                }
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        healthAsync.when(
+          data: (report) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 1. Emergency Fund Runway Indicator
+                EmergencyRunwayCard(report: report.emergencyRunway),
+                const SizedBox(height: 12),
+
+                // 2. Monthly Savings Rate % Indicator
+                SavingsRateCard(report: report.savingsRate),
+                const SizedBox(height: 12),
+
+                // 3. Needs vs Wants vs Savings (50-30-20 Gauge Meter)
+                FiftyThirtyTwentyCard(report: report.fiftyThirtyTwenty),
+                const SizedBox(height: 12),
+
+                // 4. Equity vs Debt vs Gold vs Cash Allocation Card
+                AssetAllocationCard(report: report.assetAllocation),
+                const SizedBox(height: 24),
+              ],
+            );
+          },
+          loading: () => const Center(
+            child: Padding(
+              padding: EdgeInsets.all(40.0),
+              child: CircularProgressIndicator(),
+            ),
+          ),
+          error: (err, _) => Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Text(
+                'Failed to load financial health indicators: $err',
+                style: const TextStyle(color: AppColors.expense),
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }

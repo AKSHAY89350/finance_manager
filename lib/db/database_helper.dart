@@ -902,6 +902,73 @@ class DatabaseHelper {
   }
 
   // ═══════════════════════════════════════════════════════════════
+  // FINANCIAL HEALTH & ANALYTICS HELPER QUERIES
+  // ═══════════════════════════════════════════════════════════════
+
+  /// Total income across all banks within a date range.
+  Future<double> getPeriodIncome({
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    final db = await database;
+    final where = <String>[];
+    final args = <dynamic>[];
+    if (dateFrom != null) { where.add('date >= ?'); args.add(dateFrom); }
+    if (dateTo != null) { where.add('date < ?'); args.add(dateTo); }
+
+    final result = await db.rawQuery(
+      'SELECT COALESCE(SUM(amount), 0) as total '
+      'FROM ${AppConstants.tableExtraCredit}'
+      '${where.isNotEmpty ? ' WHERE ${where.join(' AND ')}' : ''}',
+      args,
+    );
+    return (result.first['total'] as num?)?.toDouble() ?? 0.0;
+  }
+
+  /// Expenses with category, sub_category, and amount in a date range.
+  Future<List<Map<String, dynamic>>> getPeriodExpensesCategorized({
+    required String dateFrom,
+    required String dateTo,
+  }) async {
+    final db = await database;
+    return await db.rawQuery(
+      'SELECT category, sub_category, amount '
+      'FROM ${AppConstants.tableExpenses} '
+      'WHERE date >= ? AND date < ?',
+      [dateFrom, dateTo],
+    );
+  }
+
+  /// Trailing monthly non-investment expenses for burn rate / emergency runway.
+  Future<List<double>> getTrailingMonthlyBurnRates({int trailingMonths = 6}) async {
+    final db = await database;
+    final result = await db.rawQuery(
+      "SELECT strftime('%Y-%m', date) as ym, COALESCE(SUM(amount), 0) as total "
+      "FROM ${AppConstants.tableExpenses} "
+      "WHERE category != 'SIP & Investments' "
+      "GROUP BY ym "
+      "ORDER BY ym DESC "
+      "LIMIT ?",
+      [trailingMonths],
+    );
+    return result.map((r) => (r['total'] as num).toDouble()).toList();
+  }
+
+  /// Total liquid cash across all bank accounts.
+  Future<double> getTotalLiquidCash() async {
+    final banks = await getAllBanks();
+    double total = 0.0;
+    for (final b in banks) {
+      final name = b['name'] as String;
+      final bal = await getLiveBalance(name);
+      if (bal > 0) {
+        total += bal;
+      }
+    }
+    return total;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   // PHASE 9: PENDING TRANSACTIONS (REVIEW INBOX STAGING QUEUE)
   // ═══════════════════════════════════════════════════════════════
 

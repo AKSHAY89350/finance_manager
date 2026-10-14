@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../db/database_helper.dart';
 import '../../providers/expense_provider.dart';
+import '../../providers/financial_health_provider.dart';
 import '../../providers/investment_provider.dart';
 import '../../screens/main_scaffold.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/constants.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/asset_allocation_card.dart';
 import '../recurring/recurring_rules_screen.dart';
 
 class InvestmentScreen extends ConsumerStatefulWidget {
@@ -278,7 +280,18 @@ class _InvestmentScreenState extends ConsumerState<InvestmentScreen> {
                     ),
                   ),
 
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
+
+                  // Equity vs Debt vs Gold vs Cash Allocation Card
+                  ref.watch(financialHealthProvider(HealthFilter(_selectedYear, DateTime.now().month))).maybeWhen(
+                    data: (health) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: AssetAllocationCard(report: health.assetAllocation),
+                    ),
+                    orElse: () => const SizedBox.shrink(),
+                  ),
+
+                  const SizedBox(height: 8),
 
                   // Asset Allocation Section
                   const Text(
