@@ -1,11 +1,15 @@
 package com.financeapp.finance_manager
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.view.WindowManager
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -16,9 +20,12 @@ class MainActivity : FlutterFragmentActivity() {
 
     companion object {
         const val CHANNEL_NAME = "com.financeapp.finance_manager/sms"
+        const val SMS_PERMISSION_REQ_CODE = 1001
         var smsChannel: MethodChannel? = null
         val mainHandler = Handler(Looper.getMainLooper())
     }
+
+    private var pendingPermissionResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -30,6 +37,27 @@ class MainActivity : FlutterFragmentActivity() {
 
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
+                "checkSmsPermission" -> {
+                    val hasReceive = ContextCompat.checkSelfPermission(this, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
+                    val hasRead = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
+                    result.success(hasReceive && hasRead)
+                }
+
+                "requestSmsPermission" -> {
+                    val hasReceive = ContextCompat.checkSelfPermission(this, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
+                    val hasRead = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
+                    if (hasReceive && hasRead) {
+                        result.success(true)
+                    } else {
+                        pendingPermissionResult = result
+                        ActivityCompat.requestPermissions(
+                            this,
+                            arrayOf(Manifest.permission.RECEIVE_SMS, Manifest.permission.READ_SMS),
+                            SMS_PERMISSION_REQ_CODE
+                        )
+                    }
+                }
+
                 "getQueuedSms" -> {
                     val prefs = getSharedPreferences("offline_sms_queue", Context.MODE_PRIVATE)
                     val queuedJson = prefs.getString("queued_messages", "[]") ?: "[]"
@@ -64,6 +92,15 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == SMS_PERMISSION_REQ_CODE) {
+            val isGranted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+            pendingPermissionResult?.success(isGranted)
+            pendingPermissionResult = null
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         smsChannel = null
@@ -71,6 +108,9 @@ class MainActivity : FlutterFragmentActivity() {
 
     private fun fetchInboxMessages(limit: Int, daysBack: Int): List<Map<String, Any>> {
         val messages = ArrayList<Map<String, Any>>()
+        val hasRead = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
+        if (!hasRead) return messages
+
         val uri = Uri.parse("content://sms/inbox")
         val cutoffTime = System.currentTimeMillis() - (daysBack.toLong() * 24 * 60 * 60 * 1000)
 

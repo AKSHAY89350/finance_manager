@@ -1,6 +1,5 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:permission_handler/permission_handler.dart';
 import '../providers/pending_provider.dart';
 
 class SmsSyncResult {
@@ -78,15 +77,24 @@ class SmsSyncService {
     }
   }
 
-  /// Checks if SMS read permission is currently granted
+  /// Checks if SMS permissions are currently granted via native Android API
   Future<bool> hasPermission() async {
-    return await Permission.sms.isGranted;
+    try {
+      final res = await _channel.invokeMethod<bool>('checkSmsPermission');
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
   }
 
-  /// Requests SMS permission from the user
+  /// Requests SMS permissions from the user via native Android system prompt
   Future<bool> requestPermission() async {
-    final status = await Permission.sms.request();
-    return status.isGranted;
+    try {
+      final res = await _channel.invokeMethod<bool>('requestSmsPermission');
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Syncs recent bank messages from the device SMS inbox (e.g. today or last 7 days).
