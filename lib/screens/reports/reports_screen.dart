@@ -406,7 +406,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> with SingleTicker
                 const SizedBox(height: 12),
 
                 // 3. Needs vs Wants vs Savings (50-30-20 Gauge Meter)
-                FiftyThirtyTwentyCard(report: report.fiftyThirtyTwenty),
+                FiftyThirtyTwentyCard(
+                  report: report.fiftyThirtyTwenty,
+                  year: report.year,
+                  month: report.month,
+                ),
                 const SizedBox(height: 12),
 
                 // 4. Equity vs Debt vs Gold vs Cash Allocation Card

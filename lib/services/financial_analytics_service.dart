@@ -50,6 +50,62 @@ class FiftyThirtyTwentyReport {
   });
 }
 
+class FiftyThirtyTwentyMonthlyDetails {
+  final int year;
+  final int month;
+  final double totalIncome;
+  final double totalExpense;
+  final double needsTotal;
+  final double wantsTotal;
+  final double savingsTotal;
+  final double directInvestmentsTotal;
+  final double unspentCashSurplus;
+  final double needsPercentage;
+  final double wantsPercentage;
+  final double savingsPercentage;
+  final bool isNeedsSafe;
+  final bool isWantsSafe;
+  final bool isSavingsSafe;
+  final String advice;
+  final List<Map<String, dynamic>> needsTransactions;
+  final List<Map<String, dynamic>> wantsTransactions;
+  final List<Map<String, dynamic>> savingsTransactions;
+  final Map<String, double> needsCategorySums;
+  final Map<String, int> needsCategoryCounts;
+  final Map<String, double> wantsCategorySums;
+  final Map<String, int> wantsCategoryCounts;
+  final Map<String, double> savingsCategorySums;
+  final Map<String, int> savingsCategoryCounts;
+
+  const FiftyThirtyTwentyMonthlyDetails({
+    required this.year,
+    required this.month,
+    required this.totalIncome,
+    required this.totalExpense,
+    required this.needsTotal,
+    required this.wantsTotal,
+    required this.savingsTotal,
+    required this.directInvestmentsTotal,
+    required this.unspentCashSurplus,
+    required this.needsPercentage,
+    required this.wantsPercentage,
+    required this.savingsPercentage,
+    required this.isNeedsSafe,
+    required this.isWantsSafe,
+    required this.isSavingsSafe,
+    required this.advice,
+    required this.needsTransactions,
+    required this.wantsTransactions,
+    required this.savingsTransactions,
+    required this.needsCategorySums,
+    required this.needsCategoryCounts,
+    required this.wantsCategorySums,
+    required this.wantsCategoryCounts,
+    required this.savingsCategorySums,
+    required this.savingsCategoryCounts,
+  });
+}
+
 class EmergencyRunwayReport {
   final double totalLiquidCash;
   final double monthlyBurnRate;
@@ -532,6 +588,123 @@ class FinancialAnalyticsService {
       assetAllocation: assetAlloc,
       year: year,
       month: month,
+    );
+  }
+
+  /// Deep-dive evaluation of 50-30-20 rule for a specific month and year,
+  /// including itemized transactions and category totals for Needs, Wants, and Savings.
+  static Future<FiftyThirtyTwentyMonthlyDetails> getFiftyThirtyTwentyDetails({
+    required int year,
+    required int month,
+  }) async {
+    final start = AppFormatters.monthStart(year, month);
+    final end = AppFormatters.monthEnd(year, month);
+
+    final expenses = await DatabaseHelper.instance.getExpensesFiltered(
+      dateFrom: start,
+      dateTo: end,
+    );
+
+    final totalIncome = await DatabaseHelper.instance.getPeriodIncome(
+      dateFrom: start,
+      dateTo: end,
+    );
+
+    final List<Map<String, dynamic>> needsTransactions = [];
+    final List<Map<String, dynamic>> wantsTransactions = [];
+    final List<Map<String, dynamic>> savingsTransactions = [];
+
+    double needsTotal = 0.0;
+    double wantsTotal = 0.0;
+    double loggedSavingsTotal = 0.0;
+
+    final Map<String, double> needsCategorySums = {};
+    final Map<String, int> needsCategoryCounts = {};
+    final Map<String, double> wantsCategorySums = {};
+    final Map<String, int> wantsCategoryCounts = {};
+    final Map<String, double> savingsCategorySums = {};
+    final Map<String, int> savingsCategoryCounts = {};
+
+    for (final exp in expenses) {
+      final cat = (exp['category'] as String?) ?? '';
+      final sub = exp['sub_category'] as String?;
+      final amt = (exp['amount'] as num?)?.toDouble() ?? 0.0;
+      if (amt <= 0) continue;
+
+      final label = (sub != null && sub.trim().isNotEmpty) ? '$cat • $sub' : cat;
+
+      if (isInvestmentCategory(cat)) {
+        loggedSavingsTotal += amt;
+        savingsTransactions.add(exp);
+        savingsCategorySums[label] = (savingsCategorySums[label] ?? 0.0) + amt;
+        savingsCategoryCounts[label] = (savingsCategoryCounts[label] ?? 0) + 1;
+      } else if (isNeedExpense(cat, sub)) {
+        needsTotal += amt;
+        needsTransactions.add(exp);
+        needsCategorySums[label] = (needsCategorySums[label] ?? 0.0) + amt;
+        needsCategoryCounts[label] = (needsCategoryCounts[label] ?? 0) + 1;
+      } else {
+        wantsTotal += amt;
+        wantsTransactions.add(exp);
+        wantsCategorySums[label] = (wantsCategorySums[label] ?? 0.0) + amt;
+        wantsCategoryCounts[label] = (wantsCategoryCounts[label] ?? 0) + 1;
+      }
+    }
+
+    final totalExpense = needsTotal + wantsTotal + loggedSavingsTotal;
+    final double unspentCashSurplus = (totalIncome > totalExpense) ? (totalIncome - totalExpense) : 0.0;
+    final double totalSavings = loggedSavingsTotal + unspentCashSurplus;
+
+    final double base = totalIncome > 0 ? totalIncome : totalExpense;
+    final double needsPct = base > 0 ? (needsTotal / base) * 100 : 0.0;
+    final double wantsPct = base > 0 ? (wantsTotal / base) * 100 : 0.0;
+    final double savingsPct = base > 0 ? (totalSavings / base) * 100 : 0.0;
+
+    final bool isNeedsSafe = needsPct <= 50.0;
+    final bool isWantsSafe = wantsPct <= 30.0;
+    final bool isSavingsSafe = savingsPct >= 20.0;
+
+    String advice;
+    if (base == 0) {
+      advice = "Log your monthly income and expenses to visualize your 50-30-20 breakdown.";
+    } else if (isNeedsSafe && isWantsSafe && isSavingsSafe) {
+      advice = "🌟 Golden Ratio! Needs are under 50%, Wants under 30%, and savings exceed 20%.";
+    } else if (!isNeedsSafe && !isWantsSafe) {
+      advice = "⚠️ Both Needs (${needsPct.toStringAsFixed(1)}%) and Wants (${wantsPct.toStringAsFixed(1)}%) exceed targets. Trim discretionary spending first.";
+    } else if (!isNeedsSafe) {
+      advice = "⚠️ Essential Needs are high at ${needsPct.toStringAsFixed(1)}% (target ≤ 50%). Review fixed recurring bills or rent commitments.";
+    } else if (!isWantsSafe) {
+      advice = "⚠️ Lifestyle Wants are high at ${wantsPct.toStringAsFixed(1)}% (target ≤ 30%). Reducing discretionary purchases will boost your savings.";
+    } else {
+      advice = "💡 Savings are at ${savingsPct.toStringAsFixed(1)}% (target ≥ 20%). Automate a monthly SIP on payday to reach the 20% mark.";
+    }
+
+    return FiftyThirtyTwentyMonthlyDetails(
+      year: year,
+      month: month,
+      totalIncome: totalIncome,
+      totalExpense: totalExpense,
+      needsTotal: needsTotal,
+      wantsTotal: wantsTotal,
+      savingsTotal: totalSavings,
+      directInvestmentsTotal: loggedSavingsTotal,
+      unspentCashSurplus: unspentCashSurplus,
+      needsPercentage: needsPct,
+      wantsPercentage: wantsPct,
+      savingsPercentage: savingsPct,
+      isNeedsSafe: isNeedsSafe,
+      isWantsSafe: isWantsSafe,
+      isSavingsSafe: isSavingsSafe,
+      advice: advice,
+      needsTransactions: needsTransactions,
+      wantsTransactions: wantsTransactions,
+      savingsTransactions: savingsTransactions,
+      needsCategorySums: needsCategorySums,
+      needsCategoryCounts: needsCategoryCounts,
+      wantsCategorySums: wantsCategorySums,
+      wantsCategoryCounts: wantsCategoryCounts,
+      savingsCategorySums: savingsCategorySums,
+      savingsCategoryCounts: savingsCategoryCounts,
     );
   }
 }
