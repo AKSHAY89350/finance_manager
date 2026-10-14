@@ -79,6 +79,31 @@ class DatabaseHelper {
         await db.execute('ALTER TABLE ${AppConstants.tableBanks} ADD COLUMN account_last_4 TEXT');
       } catch (_) {}
     }
+    if (oldVersion < 3) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS ${AppConstants.tableRecurringRules} (
+          id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+          title               TEXT    NOT NULL,
+          type                TEXT    NOT NULL,
+          category            TEXT    NOT NULL,
+          sub_category        TEXT,
+          amount              REAL    NOT NULL CHECK(amount > 0),
+          bank                TEXT    NOT NULL,
+          day_of_month        INTEGER NOT NULL CHECK(day_of_month >= 1 AND day_of_month <= 31),
+          start_date          TEXT    NOT NULL,
+          next_due_date       TEXT    NOT NULL,
+          last_processed_date TEXT,
+          is_active           INTEGER NOT NULL DEFAULT 1,
+          notes               TEXT,
+          last_status         TEXT    DEFAULT 'PENDING',
+          last_status_message TEXT
+        )
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_recurring_due
+          ON ${AppConstants.tableRecurringRules}(next_due_date, is_active)
+      ''');
+    }
   }
 
   // ── Create all tables ─────────────────────────────────────────
@@ -205,6 +230,32 @@ class DatabaseHelper {
         usage_count      INTEGER DEFAULT 1,
         last_used        TEXT NOT NULL
       )
+    ''');
+
+    // Table 9: recurring_rules (Auto-debit for SIP, Loan, EMI, Rent, and Bills)
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${AppConstants.tableRecurringRules} (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        title               TEXT    NOT NULL,
+        type                TEXT    NOT NULL,
+        category            TEXT    NOT NULL,
+        sub_category        TEXT,
+        amount              REAL    NOT NULL CHECK(amount > 0),
+        bank                TEXT    NOT NULL,
+        day_of_month        INTEGER NOT NULL CHECK(day_of_month >= 1 AND day_of_month <= 31),
+        start_date          TEXT    NOT NULL,
+        next_due_date       TEXT    NOT NULL,
+        last_processed_date TEXT,
+        is_active           INTEGER NOT NULL DEFAULT 1,
+        notes               TEXT,
+        last_status         TEXT    DEFAULT 'PENDING',
+        last_status_message TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_recurring_due
+        ON ${AppConstants.tableRecurringRules}(next_due_date, is_active)
     ''');
   }
 
@@ -827,6 +878,73 @@ class DatabaseHelper {
   }
 
   // ═══════════════════════════════════════════════════════════════
+  // RECURRING RULES (AUTO-DEBIT) CRUD
+  // ═══════════════════════════════════════════════════════════════
+
+  /// Insert a new recurring auto-debit rule. Returns the new row id.
+  Future<int> insertRecurringRule(Map<String, dynamic> data) async {
+    final db = await database;
+    return await db.insert(
+      AppConstants.tableRecurringRules,
+      data,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Update an existing recurring rule by id.
+  Future<int> updateRecurringRule(int id, Map<String, dynamic> data) async {
+    final db = await database;
+    return await db.update(
+      AppConstants.tableRecurringRules,
+      data,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Delete a recurring rule by id.
+  Future<int> deleteRecurringRule(int id) async {
+    final db = await database;
+    return await db.delete(
+      AppConstants.tableRecurringRules,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Get all recurring rules ordered by active status and next due date.
+  Future<List<Map<String, dynamic>>> getAllRecurringRules() async {
+    final db = await database;
+    return await db.query(
+      AppConstants.tableRecurringRules,
+      orderBy: 'is_active DESC, next_due_date ASC, id ASC',
+    );
+  }
+
+  /// Get all active recurring rules due on or before asOfDate (YYYY-MM-DD).
+  Future<List<Map<String, dynamic>>> getDueRecurringRules(String asOfDate) async {
+    final db = await database;
+    return await db.query(
+      AppConstants.tableRecurringRules,
+      where: 'is_active = 1 AND next_due_date <= ?',
+      whereArgs: [asOfDate],
+      orderBy: 'next_due_date ASC',
+    );
+  }
+
+  /// Get a single recurring rule by id.
+  Future<Map<String, dynamic>?> getRecurringRuleById(int id) async {
+    final db = await database;
+    final rows = await db.query(
+      AppConstants.tableRecurringRules,
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    return rows.isNotEmpty ? rows.first : null;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   // UTILITY
   // ═══════════════════════════════════════════════════════════════
 
@@ -843,5 +961,6 @@ class DatabaseHelper {
     await db.delete(AppConstants.tableExpenses);
     await db.delete(AppConstants.tableExtraCredit);
     await db.delete(AppConstants.tableTransfers);
+    await db.delete(AppConstants.tableRecurringRules);
   }
 }

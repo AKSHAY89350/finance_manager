@@ -17,6 +17,7 @@ import '../../utils/excel_import_helper.dart';
 import '../../utils/export_helper.dart';
 import '../../utils/formatters.dart';
 import '../transactions/review_inbox_screen.dart';
+import '../recurring/recurring_rules_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -474,6 +475,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     subtitle: const Text('View & manage merchant auto-mapping rules learned on-device'),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => _showLearnedRulesDialog(context),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+                _sectionHeader('Automation & Standing Orders'),
+                Card(
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+                  child: ListTile(
+                    leading: const Icon(Icons.schedule_send_rounded, color: AppColors.investment),
+                    title: const Text('Auto-Debits (SIP, EMI & Loans)'),
+                    subtitle: const Text('Manage fixed-date payments with bank balance verification'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const RecurringRulesScreen()),
+                      );
+                    },
                   ),
                 ),
 

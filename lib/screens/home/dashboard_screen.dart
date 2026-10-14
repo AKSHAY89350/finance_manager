@@ -7,7 +7,9 @@ import '../../providers/transfer_provider.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/formatters.dart';
 import '../../providers/pending_provider.dart';
+import '../../providers/recurring_provider.dart';
 import '../transactions/review_inbox_screen.dart';
+import '../recurring/recurring_rules_screen.dart';
 import '../../widgets/bank_balance_card.dart';
 import '../transactions/transaction_list_screen.dart';
 
@@ -19,6 +21,7 @@ class DashboardScreen extends ConsumerWidget {
     final bankState = ref.watch(bankProvider);
     final expenseState = ref.watch(expenseProvider);
     final pendingCount = ref.watch(pendingCountProvider);
+    final lowBalanceAlertCount = ref.watch(lowBalanceAlertCountProvider);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -82,6 +85,8 @@ class DashboardScreen extends ConsumerWidget {
           await ref.read(incomeProvider.notifier).loadIncome();
           await ref.read(transferProvider.notifier).loadTransfers();
           await ref.read(pendingNotifierProvider.notifier).loadPending();
+          await ref.read(recurringProvider.notifier).loadRules();
+          await ref.read(recurringProvider.notifier).processDueAutoDebits();
         },
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -139,6 +144,65 @@ class DashboardScreen extends ConsumerWidget {
                           ),
                         ),
                         Icon(Icons.arrow_forward_ios, size: 14, color: Colors.amber.shade900),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+            // Low Balance Auto-Debit Alert Banner (if skipped > 0)
+            if (lowBalanceAlertCount > 0)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16.0),
+                child: InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const RecurringRulesScreen()),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.red.shade400, width: 1.5),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade100,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(Icons.warning_amber_rounded, color: Colors.red.shade900, size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '$lowBalanceAlertCount Auto-Debit(s) Skipped: Low Balance',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.red.shade900,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const Text(
+                                'Account had insufficient funds. Tap to view and retry.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(Icons.arrow_forward_ios, size: 14, color: Colors.red.shade900),
                       ],
                     ),
                   ),
@@ -312,7 +376,7 @@ class DashboardScreen extends ConsumerWidget {
                     onTap: () => Navigator.pushNamed(context, '/add-expense'),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 Expanded(
                   child: _QuickActionButton(
                     icon: Icons.arrow_upward_rounded,
@@ -321,13 +385,25 @@ class DashboardScreen extends ConsumerWidget {
                     onTap: () => Navigator.pushNamed(context, '/add-income'),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 Expanded(
                   child: _QuickActionButton(
                     icon: Icons.swap_horiz_rounded,
                     color: AppColors.transfer,
                     label: 'Transfer',
                     onTap: () => Navigator.pushNamed(context, '/transfer'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _QuickActionButton(
+                    icon: Icons.schedule_rounded,
+                    color: AppColors.investment,
+                    label: 'Auto-Debit',
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const RecurringRulesScreen()),
+                    ),
                   ),
                 ),
               ],

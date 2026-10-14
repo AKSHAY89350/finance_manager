@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/recurring_provider.dart';
 import '../utils/app_colors.dart';
 import 'home/dashboard_screen.dart';
 import 'transactions/transaction_list_screen.dart';
@@ -12,8 +13,21 @@ final selectedTabProvider = StateProvider<int>((ref) => 0);
 
 /// Main scaffold with bottom navigation bar.
 /// All 5 tabs are defined here — matching the roadmap.
-class MainScaffold extends ConsumerWidget {
+class MainScaffold extends ConsumerStatefulWidget {
   const MainScaffold({super.key});
+
+  @override
+  ConsumerState<MainScaffold> createState() => _MainScaffoldState();
+}
+
+class _MainScaffoldState extends ConsumerState<MainScaffold> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(recurringProvider.notifier).processDueAutoDebits(context: context);
+    });
+  }
 
   static const List<_TabItem> _tabs = [
     _TabItem(
@@ -52,7 +66,7 @@ class MainScaffold extends ConsumerWidget {
   ];
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final selectedTab = ref.watch(selectedTabProvider);
 
     return Scaffold(
