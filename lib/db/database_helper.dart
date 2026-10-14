@@ -34,6 +34,13 @@ class DatabaseHelper {
       version: AppConstants.dbVersion,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
+      onOpen: (db) async {
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_income_bank ON ${AppConstants.tableExtraCredit}(bank)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_income_date ON ${AppConstants.tableExtraCredit}(date)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_transfers_from ON ${AppConstants.tableTransfers}(from_bank)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_transfers_to ON ${AppConstants.tableTransfers}(to_bank)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_transfers_date ON ${AppConstants.tableTransfers}(date)');
+      },
     );
   }
 
@@ -169,6 +176,15 @@ class DatabaseHelper {
       )
     ''');
 
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_income_bank
+        ON ${AppConstants.tableExtraCredit}(bank)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_income_date
+        ON ${AppConstants.tableExtraCredit}(date)
+    ''');
+
     // Table 4: transfers
     await db.execute('''
       CREATE TABLE IF NOT EXISTS ${AppConstants.tableTransfers} (
@@ -180,6 +196,19 @@ class DatabaseHelper {
         description TEXT,
         CHECK(from_bank != to_bank)
       )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_transfers_from
+        ON ${AppConstants.tableTransfers}(from_bank)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_transfers_to
+        ON ${AppConstants.tableTransfers}(to_bank)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_transfers_date
+        ON ${AppConstants.tableTransfers}(date)
     ''');
 
     // Table 5: categories (master lookup)
@@ -347,6 +376,47 @@ class DatabaseHelper {
   // ═══════════════════════════════════════════════════════════════
   // EXPENSES CRUD
   // ═══════════════════════════════════════════════════════════════
+
+  /// High-performance bulk insert executing inside a single atomic transaction.
+  /// Eliminates NAND flash write churn and UI freeze during large Excel imports.
+  Future<void> batchInsertRecords({
+    List<Map<String, dynamic>> expenses = const [],
+    List<Map<String, dynamic>> incomes = const [],
+    List<Map<String, dynamic>> transfers = const [],
+    List<String> newBanks = const [],
+  }) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      for (final bank in newBanks) {
+        await txn.insert(
+          AppConstants.tableBanks,
+          {'name': bank, 'starting_balance': 0.0},
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
+      for (final e in expenses) {
+        await txn.insert(
+          AppConstants.tableExpenses,
+          e,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      for (final inc in incomes) {
+        await txn.insert(
+          AppConstants.tableExtraCredit,
+          inc,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      for (final t in transfers) {
+        await txn.insert(
+          AppConstants.tableTransfers,
+          t,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
+  }
 
   /// Insert a new expense. Returns the new row id.
   Future<int> insertExpense(Map<String, dynamic> data) async {

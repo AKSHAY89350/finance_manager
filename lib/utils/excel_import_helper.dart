@@ -36,21 +36,23 @@ class ExcelImportHelper {
   static Future<ImportResult> importExcelFile(Uint8List bytes) async {
     try {
       final excel = Excel.decodeBytes(bytes);
-      int importedExpenses = 0;
-      int importedIncome = 0;
-      int importedTransfers = 0;
 
       // Track known banks to automatically create new banks found in sheet
       final existingBanks = await DatabaseHelper.instance.getAllBanks();
       final bankNames = existingBanks.map((b) => b['name'] as String).toSet();
+      final Set<String> newBanksToInsert = {};
 
-      Future<void> ensureBankExists(String bank) async {
+      void registerBank(String bank) {
         final trimmed = bank.trim();
         if (trimmed.isNotEmpty && !bankNames.contains(trimmed)) {
-          await DatabaseHelper.instance.insertBank(trimmed, 0.0);
+          newBanksToInsert.add(trimmed);
           bankNames.add(trimmed);
         }
       }
+
+      final List<Map<String, dynamic>> expensesToInsert = [];
+      final List<Map<String, dynamic>> incomesToInsert = [];
+      final List<Map<String, dynamic>> transfersToInsert = [];
 
       // ── 1. IMPORT EXPENSES ─────────────────────────────────────────
       final expenseSheet = _findSheet(excel, 'Expenses');
@@ -71,9 +73,9 @@ class ExcelImportHelper {
 
           if (amount > 0) {
             final formattedDate = _standardizeDate(dateVal);
-            await ensureBankExists(bank);
+            registerBank(bank);
 
-            await DatabaseHelper.instance.insertExpense({
+            expensesToInsert.add({
               'date': formattedDate,
               'category': category.isEmpty ? 'Other' : category,
               'sub_category': subCategory?.isEmpty == true ? null : subCategory,
@@ -81,7 +83,6 @@ class ExcelImportHelper {
               'amount': amount,
               'bank': bank.isEmpty ? 'HSBC' : bank,
             });
-            importedExpenses++;
           }
         }
       }
@@ -104,16 +105,15 @@ class ExcelImportHelper {
 
           if (amount > 0) {
             final formattedDate = _standardizeDate(dateVal);
-            await ensureBankExists(bank);
+            registerBank(bank);
 
-            await DatabaseHelper.instance.insertIncome({
+            incomesToInsert.add({
               'date': formattedDate,
               'user_name': userName?.isEmpty == true ? null : userName,
               'amount': amount,
               'mode': mode.isEmpty ? 'Other' : mode,
               'bank': bank.isEmpty ? 'HSBC' : bank,
             });
-            importedIncome++;
           }
         }
       }
@@ -136,25 +136,32 @@ class ExcelImportHelper {
 
           if (amount > 0 && fromBank.isNotEmpty && toBank.isNotEmpty && fromBank != toBank) {
             final formattedDate = _standardizeDate(dateVal);
-            await ensureBankExists(fromBank);
-            await ensureBankExists(toBank);
+            registerBank(fromBank);
+            registerBank(toBank);
 
-            await DatabaseHelper.instance.insertTransfer({
+            transfersToInsert.add({
               'date': formattedDate,
               'from_bank': fromBank,
               'to_bank': toBank,
               'amount': amount,
               'description': desc?.isEmpty == true ? null : desc,
             });
-            importedTransfers++;
           }
         }
       }
 
+      // Execute high performance atomic batch transaction
+      await DatabaseHelper.instance.batchInsertRecords(
+        expenses: expensesToInsert,
+        incomes: incomesToInsert,
+        transfers: transfersToInsert,
+        newBanks: newBanksToInsert.toList(),
+      );
+
       return ImportResult(
-        expensesCount: importedExpenses,
-        incomeCount: importedIncome,
-        transferCount: importedTransfers,
+        expensesCount: expensesToInsert.length,
+        incomeCount: incomesToInsert.length,
+        transferCount: transfersToInsert.length,
       );
     } catch (e) {
       return ImportResult(error: e.toString());
