@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/pending_transaction.dart';
 import '../../providers/pending_provider.dart';
 import '../../providers/bank_provider.dart';
+import '../../services/sms_sync_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/formatters.dart';
 
@@ -16,6 +17,61 @@ class ReviewInboxScreen extends ConsumerStatefulWidget {
 class _ReviewInboxScreenState extends ConsumerState<ReviewInboxScreen> {
   String? _bankFilter;
   String? _typeFilter;
+  bool _isSyncing = false;
+
+  Future<void> _syncBankSms() async {
+    setState(() => _isSyncing = true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Scanning phone SMS inbox for bank transactions...'),
+        duration: Duration(seconds: 1),
+      ),
+    );
+
+    final result = await SmsSyncService.instance.syncRecentInbox(ref);
+    if (!mounted) return;
+    setState(() => _isSyncing = false);
+
+    if (!result.permissionGranted) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('SMS Permission Required'),
+          content: const Text(
+            'To automatically detect bank debits, credits, and UPI payments, Finance Manager needs permission to read SMS messages. Your data is 100% offline and never leaves your phone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await SmsSyncService.instance.requestPermission();
+                if (mounted) {
+                  _syncBankSms();
+                }
+              },
+              child: const Text('Grant Permission'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          result.newAdded > 0
+              ? 'Found ${result.newAdded} new bank transaction(s)!'
+              : 'Inbox scanned. No new unreviewed bank transactions.',
+        ),
+        backgroundColor: result.newAdded > 0 ? Colors.green : Colors.grey[800],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,6 +81,17 @@ class _ReviewInboxScreenState extends ConsumerState<ReviewInboxScreen> {
       appBar: AppBar(
         title: const Text('Review Inbox'),
         actions: [
+          IconButton(
+            icon: _isSyncing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                  )
+                : const Icon(Icons.sync_rounded),
+            tooltip: 'Sync SMS from Phone',
+            onPressed: _isSyncing ? null : () => _syncBankSms(),
+          ),
           IconButton(
             icon: const Icon(Icons.add_comment_outlined),
             tooltip: 'Simulate Test Bank SMS',
@@ -62,6 +129,21 @@ class _ReviewInboxScreenState extends ConsumerState<ReviewInboxScreen> {
                     ),
                     const SizedBox(height: 24),
                     ElevatedButton.icon(
+                      icon: _isSyncing
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                            )
+                          : const Icon(Icons.sync_rounded),
+                      label: Text(_isSyncing ? 'Scanning Inbox...' : 'Sync Recent Bank SMS'),
+                      onPressed: _isSyncing ? null : () => _syncBankSms(),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
                       icon: const Icon(Icons.sms_outlined),
                       label: const Text('Simulate Test Bank SMS'),
                       onPressed: () => _showSimulateDialog(context),

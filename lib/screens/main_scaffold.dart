@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/recurring_provider.dart';
+import '../services/sms_sync_service.dart';
 import '../utils/app_colors.dart';
 import 'home/dashboard_screen.dart';
 import 'transactions/transaction_list_screen.dart';
@@ -26,6 +27,7 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(recurringProvider.notifier).processDueAutoDebits(context: context);
+      SmsSyncService.instance.initialize(ref);
     });
   }
 
