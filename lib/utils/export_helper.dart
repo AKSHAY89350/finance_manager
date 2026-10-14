@@ -190,8 +190,16 @@ class ExportHelper {
       buffer.writeln('$date,$category,$subCategory,$desc,$amount,$bank');
     }
 
-    // Save File to temporary cache storage (CWE-312 prevention)
+    // Save File to temporary cache storage (CWE-312 prevention & CWE-459 cache cleanup)
     final dir = await getTemporaryDirectory();
+    try {
+      for (final entity in dir.listSync()) {
+        if (entity is File && entity.path.contains('Expenses_')) {
+          entity.deleteSync();
+        }
+      }
+    } catch (_) {}
+
     final fileName = 'Expenses_${AppFormatters.dbDate(DateTime.now())}.csv';
     final file = File('${dir.path}/$fileName');
     await file.writeAsString(buffer.toString());
