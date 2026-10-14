@@ -118,5 +118,54 @@ void main() {
 
       expect(AutoDebitService.maxCatchUpCycles, equals(12));
     });
+
+    test('RecurringRule Auto-Income direction serialization and helpers', () {
+      final salaryRule = RecurringRule(
+        id: 2,
+        title: 'Monthly Salary (Neosoft Technologies)',
+        type: 'Salary',
+        category: 'Extra Credit',
+        amount: 85000.0,
+        bank: 'HDFC',
+        dayOfMonth: 1,
+        startDate: '2026-10-01',
+        nextDueDate: '2026-11-01',
+        direction: 'CREDIT',
+      );
+
+      expect(salaryRule.isCredit, isTrue);
+      expect(salaryRule.isDebit, isFalse);
+
+      final map = salaryRule.toMap();
+      expect(map['direction'], equals('CREDIT'));
+      expect(map['title'], equals('Monthly Salary (Neosoft Technologies)'));
+      expect(map['amount'], equals(85000.0));
+
+      final deserialized = RecurringRule.fromMap(map);
+      expect(deserialized.direction, equals('CREDIT'));
+      expect(deserialized.isCredit, isTrue);
+      expect(deserialized.isDebit, isFalse);
+    });
+
+    test('RecurringRule defaults direction to DEBIT when missing in legacy DB records', () {
+      final legacyMap = {
+        'id': 3,
+        'title': 'Legacy SIP',
+        'type': 'SIP',
+        'category': 'SIP & Investments',
+        'amount': 2000.0,
+        'bank': 'SBI',
+        'day_of_month': 10,
+        'start_date': '2026-09-01',
+        'next_due_date': '2026-10-10',
+        'is_active': 1,
+      };
+
+      final legacyRule = RecurringRule.fromMap(legacyMap);
+      expect(legacyRule.direction, equals('DEBIT'));
+      expect(legacyRule.isDebit, isTrue);
+      expect(legacyRule.isCredit, isFalse);
+    });
   });
 }
+

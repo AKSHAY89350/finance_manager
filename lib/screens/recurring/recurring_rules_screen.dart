@@ -34,9 +34,10 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
     final amountCtrl = TextEditingController(text: existingRule != null ? existingRule.amount.toString() : '');
     final notesCtrl = TextEditingController(text: existingRule?.notes ?? '');
 
-    String selectedType = existingRule?.type ?? 'SIP';
-    String selectedCategory = existingRule?.category ?? 'SIP & Investments';
-    String? selectedSubCategory = existingRule?.subCategory ?? 'Mutual Funds (SIP)';
+    String selectedDirection = existingRule?.direction ?? 'DEBIT'; // 'DEBIT' or 'CREDIT'
+    String selectedType = existingRule?.type ?? (selectedDirection == 'DEBIT' ? 'SIP' : 'Salary');
+    String selectedCategory = existingRule?.category ?? (selectedDirection == 'DEBIT' ? 'SIP & Investments' : 'Extra Credit');
+    String? selectedSubCategory = existingRule?.subCategory ?? (selectedDirection == 'DEBIT' ? 'Mutual Funds (SIP)' : null);
 
     final bankState = ref.read(bankProvider);
     final banks = bankState.maybeWhen(
@@ -45,7 +46,7 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
     );
 
     String selectedBank = existingRule?.bank ?? (banks.isNotEmpty ? banks.first.bank.name : AppConstants.defaultBanks.first);
-    int selectedDay = existingRule?.dayOfMonth ?? 5;
+    int selectedDay = existingRule?.dayOfMonth ?? 1;
     DateTime selectedStartDate = existingRule != null
         ? AppFormatters.parseDbDate(existingRule.startDate)
         : DateTime.now();
@@ -59,8 +60,10 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (dialogCtx, setDialogState) {
+            final isCredit = selectedDirection == 'CREDIT';
+
             return DraggableScrollableSheet(
-              initialChildSize: 0.85,
+              initialChildSize: 0.88,
               maxChildSize: 0.95,
               minChildSize: 0.5,
               expand: false,
@@ -72,7 +75,9 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
                     elevation: 0,
                     iconTheme: const IconThemeData(color: AppColors.textPrimary),
                     title: Text(
-                      existingRule == null ? 'New Auto-Debit Rule' : 'Edit Auto-Debit Rule',
+                      existingRule == null
+                          ? (isCredit ? 'New Auto-Income Rule' : 'New Auto-Debit Rule')
+                          : (isCredit ? 'Edit Auto-Income Rule' : 'Edit Auto-Debit Rule'),
                       style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -80,35 +85,142 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
                     controller: scrollController,
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                     children: [
+                      // Direction Toggle: Debit vs Credit
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: InkWell(
+                                onTap: () {
+                                  setDialogState(() {
+                                    selectedDirection = 'DEBIT';
+                                    selectedType = 'SIP';
+                                    selectedCategory = 'SIP & Investments';
+                                    selectedSubCategory = 'Mutual Funds (SIP)';
+                                  });
+                                },
+                                borderRadius: BorderRadius.circular(10),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: !isCredit ? AppColors.expense : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.arrow_downward_rounded,
+                                        size: 16,
+                                        color: !isCredit ? Colors.white : AppColors.textSecondary,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Auto-Deduction',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                          color: !isCredit ? Colors.white : AppColors.textSecondary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: InkWell(
+                                onTap: () {
+                                  setDialogState(() {
+                                    selectedDirection = 'CREDIT';
+                                    selectedType = 'Salary';
+                                    selectedCategory = 'Extra Credit';
+                                    selectedSubCategory = null;
+                                  });
+                                },
+                                borderRadius: BorderRadius.circular(10),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: isCredit ? AppColors.income : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.arrow_upward_rounded,
+                                        size: 16,
+                                        color: isCredit ? Colors.white : AppColors.textSecondary,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Auto-Income',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                          color: isCredit ? Colors.white : AppColors.textSecondary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
                       // Type Selector Chips
-                      const Text('Transaction Type', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                      Text(
+                        isCredit ? 'Income Type' : 'Deduction Type',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
                       const SizedBox(height: 8),
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: Row(
-                          children: AppConstants.recurringTypes.map((type) {
+                          children: (isCredit ? AppConstants.recurringIncomeTypes : AppConstants.recurringTypes).map((type) {
                             final isSel = selectedType == type;
                             return Padding(
                               padding: const EdgeInsets.only(right: 8.0),
                               child: ChoiceChip(
                                 label: Text(type),
                                 selected: isSel,
+                                selectedColor: (isCredit ? AppColors.income : AppColors.primary).withValues(alpha: 0.2),
+                                labelStyle: TextStyle(
+                                  fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
+                                  color: isSel
+                                      ? (isCredit ? AppColors.income : AppColors.primary)
+                                      : AppColors.textPrimary,
+                                ),
                                 onSelected: (sel) {
                                   if (sel) {
                                     setDialogState(() {
                                       selectedType = type;
-                                      if (type == 'SIP') {
-                                        selectedCategory = 'SIP & Investments';
-                                        selectedSubCategory = 'Mutual Funds (SIP)';
-                                      } else if (type == 'Loan EMI') {
-                                        selectedCategory = 'Loan';
-                                        selectedSubCategory = 'Home Loan';
-                                      } else if (type == 'Rent') {
-                                        selectedCategory = 'Home Send';
-                                        selectedSubCategory = 'House Rent';
-                                      } else if (type == 'Bill') {
-                                        selectedCategory = 'Bills & Utilities';
-                                        selectedSubCategory = 'Electricity Bill';
+                                      if (!isCredit) {
+                                        if (type == 'SIP') {
+                                          selectedCategory = 'SIP & Investments';
+                                          selectedSubCategory = 'Mutual Funds (SIP)';
+                                        } else if (type == 'Loan EMI') {
+                                          selectedCategory = 'Loan';
+                                          selectedSubCategory = 'Home Loan';
+                                        } else if (type == 'Rent') {
+                                          selectedCategory = 'Home Send';
+                                          selectedSubCategory = 'House Rent';
+                                        } else if (type == 'Bill') {
+                                          selectedCategory = 'Bills & Utilities';
+                                          selectedSubCategory = 'Electricity Bill';
+                                        }
+                                      } else {
+                                        selectedCategory = 'Extra Credit';
+                                        selectedSubCategory = null;
                                       }
                                     });
                                   }
@@ -124,10 +236,12 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
                       TextField(
                         controller: titleCtrl,
                         decoration: InputDecoration(
-                          labelText: 'Title / Description *',
-                          hintText: selectedType == 'SIP'
-                              ? 'e.g. Parag Parikh Flexi Cap SIP'
-                              : (selectedType == 'Loan EMI' ? 'e.g. SBI Home Loan EMI' : 'e.g. House Rent'),
+                          labelText: isCredit ? 'Income Source / Title *' : 'Title / Description *',
+                          hintText: isCredit
+                              ? (selectedType == 'Salary' ? 'e.g. Monthly Salary (Neosoft)' : 'e.g. Tenant Rent')
+                              : (selectedType == 'SIP'
+                                  ? 'e.g. Parag Parikh Flexi Cap SIP'
+                                  : (selectedType == 'Loan EMI' ? 'e.g. SBI Home Loan EMI' : 'e.g. House Rent')),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                         ),
                       ),
@@ -139,15 +253,18 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
                         decoration: InputDecoration(
-                          labelText: 'Auto-Debit Amount (₹) *',
+                          labelText: isCredit ? 'Auto-Income Amount (₹) *' : 'Auto-Debit Amount (₹) *',
                           prefixText: '₹ ',
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                         ),
                       ),
                       const SizedBox(height: 16),
 
-                      // Bank Account Dropdown with live balance
-                      const Text('Debit From Bank Account *', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                      // Bank Account Dropdown
+                      Text(
+                        isCredit ? 'Credit Into Bank Account *' : 'Debit From Bank Account *',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
                       const SizedBox(height: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -211,7 +328,10 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text('Deduction Day *', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                Text(
+                                  isCredit ? 'Credit Day *' : 'Deduction Day *',
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                ),
                                 const SizedBox(height: 6),
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -290,7 +410,7 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
                         controller: notesCtrl,
                         maxLines: 2,
                         decoration: InputDecoration(
-                          labelText: 'Notes / Folio / Loan Account # (Optional)',
+                          labelText: 'Notes / Details (Optional)',
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                         ),
                       ),
@@ -300,7 +420,7 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 14),
-                          backgroundColor: AppColors.primary,
+                          backgroundColor: isCredit ? AppColors.income : AppColors.primary,
                         ),
                         onPressed: () async {
                           final title = titleCtrl.text.trim();
@@ -352,20 +472,26 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
                             notes: notesCtrl.text.trim().isNotEmpty ? notesCtrl.text.trim() : null,
                             lastStatus: existingRule?.lastStatus ?? 'PENDING',
                             lastStatusMessage: existingRule?.lastStatusMessage,
+                            direction: selectedDirection,
                           );
 
                           if (existingRule == null) {
                             await ref.read(recurringProvider.notifier).addRule(newRule);
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Auto-Debit rule created successfully')),
+                                SnackBar(
+                                  content: Text(isCredit ? 'Auto-Income rule created successfully' : 'Auto-Debit rule created successfully'),
+                                  backgroundColor: isCredit ? AppColors.income : AppColors.primary,
+                                ),
                               );
                             }
                           } else {
                             await ref.read(recurringProvider.notifier).updateRule(newRule);
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Auto-Debit rule updated')),
+                                SnackBar(
+                                  content: Text(isCredit ? 'Auto-Income rule updated' : 'Auto-Debit rule updated'),
+                                ),
                               );
                             }
                           }
@@ -373,7 +499,9 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
                           if (ctx.mounted) Navigator.pop(ctx);
                         },
                         child: Text(
-                          existingRule == null ? 'Set Auto-Debit' : 'Save Changes',
+                          existingRule == null
+                              ? (isCredit ? 'Set Auto-Income' : 'Set Auto-Debit')
+                              : 'Save Changes',
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                         ),
                       ),
@@ -393,17 +521,19 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
   Widget build(BuildContext context) {
     final rulesAsync = ref.watch(recurringProvider);
     final bankState = ref.watch(bankProvider);
-    final monthlyTotal = ref.watch(totalMonthlyRecurringProvider);
+    final monthlyDeductions = ref.watch(totalMonthlyRecurringProvider);
+    final monthlyIncome = ref.watch(totalMonthlyIncomeProvider);
+    final netCashFlow = ref.watch(netMonthlyRecurringFlowProvider);
     final lowBalanceAlertCount = ref.watch(lowBalanceAlertCountProvider);
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Auto-Debits (SIP & Loans)'),
+        title: const Text('Recurring Rules (Auto Debit & Income)'),
         actions: [
           IconButton(
             icon: const Icon(Icons.sync_rounded),
-            tooltip: 'Run Due Auto-Debits Check',
+            tooltip: 'Run Due Check Now',
             onPressed: () {
               ref.read(recurringProvider.notifier).processDueAutoDebits(
                     context: context,
@@ -413,7 +543,7 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.info_outline_rounded),
-            tooltip: 'How Auto-Debits Work',
+            tooltip: 'How Recurring Rules Work',
             onPressed: () => _showInfoDialog(context),
           ),
         ],
@@ -421,35 +551,47 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: AppColors.primary,
         icon: const Icon(Icons.add_rounded, color: Colors.white),
-        label: const Text('New Auto-Debit', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        label: const Text('New Rule', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         onPressed: () => _showAddEditDialog(context),
       ),
       body: rulesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, _) => Center(child: Text('Error: $err')),
         data: (rules) {
-          final filtered = _selectedFilter == 'All'
-              ? rules
-              : rules.where((r) => r.type.toLowerCase() == _selectedFilter.toLowerCase()).toList();
+          final filtered = rules.where((r) {
+            if (_selectedFilter == 'All') return true;
+            if (_selectedFilter == 'Debits') return r.isDebit;
+            if (_selectedFilter == 'Income') return r.isCredit;
+            return r.type.toLowerCase() == _selectedFilter.toLowerCase();
+          }).toList();
 
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // Monthly Commitments Summary Card
-              _buildOverviewCard(monthlyTotal, rules.where((r) => r.isActive).length, lowBalanceAlertCount),
+              // Monthly Commitments & Income Summary Card
+              _buildOverviewCard(
+                monthlyDeductions: monthlyDeductions,
+                monthlyIncome: monthlyIncome,
+                netCashFlow: netCashFlow,
+                activeCount: rules.where((r) => r.isActive).length,
+                lowBalanceCount: lowBalanceAlertCount,
+              ),
               const SizedBox(height: 16),
 
               // Filter Chips Row
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
-                  children: ['All', ...AppConstants.recurringTypes].map((filter) {
+                  children: ['All', 'Debits', 'Income', 'Salary', 'SIP', 'Loan EMI', 'Rent'].map((filter) {
                     final isSel = _selectedFilter == filter;
                     return Padding(
                       padding: const EdgeInsets.only(right: 8.0),
                       child: ChoiceChip(
-                        label: Text(filter),
+                        label: Text(filter == 'Debits' ? 'Auto-Debits' : (filter == 'Income' ? 'Auto-Income' : filter)),
                         selected: isSel,
+                        selectedColor: filter == 'Income'
+                            ? AppColors.income.withValues(alpha: 0.2)
+                            : (filter == 'Debits' ? AppColors.expense.withValues(alpha: 0.2) : AppColors.primary.withValues(alpha: 0.2)),
                         onSelected: (sel) {
                           if (sel) setState(() => _selectedFilter = filter);
                         },
@@ -470,12 +612,12 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
                         const Icon(Icons.schedule_send_outlined, size: 64, color: AppColors.textHint),
                         const SizedBox(height: 16),
                         const Text(
-                          'No Auto-Debits Configured',
+                          'No Recurring Rules Found',
                           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                         ),
                         const SizedBox(height: 8),
                         const Text(
-                          'Set your SIP investments, loan EMIs, and monthly rent once. They will automatically deduct on their fixed date if your bank has sufficient balance.',
+                          'Set your monthly salary, tenant rent, SIP investments, and loan EMIs once. They will automatically credit or deduct on their scheduled day.',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: AppColors.textSecondary),
                         ),
@@ -483,7 +625,7 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
                         ElevatedButton.icon(
                           onPressed: () => _showAddEditDialog(context),
                           icon: const Icon(Icons.add),
-                          label: const Text('Add Your First Auto-Debit'),
+                          label: const Text('Add Your First Rule'),
                         ),
                       ],
                     ),
@@ -514,7 +656,13 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
     );
   }
 
-  Widget _buildOverviewCard(double monthlyTotal, int activeCount, int lowBalanceCount) {
+  Widget _buildOverviewCard({
+    required double monthlyDeductions,
+    required double monthlyIncome,
+    required double netCashFlow,
+    required int activeCount,
+    required int lowBalanceCount,
+  }) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -539,7 +687,7 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'TOTAL MONTHLY RECURRING COMMITMENT',
+                'MONTHLY SCHEDULED SUMMARY',
                 style: TextStyle(
                   color: Colors.white70,
                   fontSize: 11,
@@ -560,24 +708,83 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          Text(
-            AppFormatters.currency(monthlyTotal),
-            style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 12),
-          const Row(
+          const SizedBox(height: 14),
+
+          // Inflow vs Outflow Row
+          Row(
             children: [
-              Icon(Icons.security, size: 14, color: Colors.white70),
-              SizedBox(width: 6),
               Expanded(
-                child: Text(
-                  'Auto-deducts on fixed date only if bank balance is sufficient.',
-                  style: TextStyle(color: Colors.white70, fontSize: 11),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.arrow_upward_rounded, size: 14, color: Color(0xFF4ADE80)),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Auto-Income',
+                          style: TextStyle(color: Colors.green.shade200, fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      AppFormatters.currency(monthlyIncome),
+                      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+              Container(width: 1, height: 36, color: Colors.white24),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.arrow_downward_rounded, size: 14, color: Color(0xFFFCA5A5)),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Auto-Debits',
+                          style: TextStyle(color: Colors.red.shade200, fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      AppFormatters.currency(monthlyDeductions),
+                      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
+
+          const SizedBox(height: 14),
+          const Divider(color: Colors.white24, height: 1),
+          const SizedBox(height: 10),
+
+          // Net flow
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Net Monthly Cash Flow:',
+                style: TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+              Text(
+                '${netCashFlow >= 0 ? '+' : ''}${AppFormatters.currency(netCashFlow)}',
+                style: TextStyle(
+                  color: netCashFlow >= 0 ? const Color(0xFF86EFAC) : const Color(0xFFFCA5A5),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+
           if (lowBalanceCount > 0) ...[
             const SizedBox(height: 12),
             Container(
@@ -606,7 +813,7 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
   }
 
   Widget _buildRecurringCard(BuildContext context, RecurringRule rule, double liveBalance) {
-    final isLowBalance = liveBalance < rule.amount;
+    final isLowBalance = rule.isDebit && liveBalance < rule.amount;
     final isFailed = rule.lastStatus == 'INSUFFICIENT_BALANCE';
 
     return Card(
@@ -627,17 +834,42 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 CircleAvatar(
-                  backgroundColor: _getTypeColor(rule.type).withValues(alpha: 0.15),
-                  child: Icon(_getTypeIcon(rule.type), color: _getTypeColor(rule.type), size: 20),
+                  backgroundColor: _getTypeColor(rule.type, rule.isCredit).withValues(alpha: 0.15),
+                  child: Icon(
+                    _getTypeIcon(rule.type, rule.isCredit),
+                    color: _getTypeColor(rule.type, rule.isCredit),
+                    size: 20,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        rule.title,
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              rule.title,
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: (rule.isCredit ? AppColors.income : AppColors.expense).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              rule.isCredit ? 'INCOME' : 'DEBIT',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: rule.isCredit ? AppColors.income : AppColors.expense,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 2),
                       Text(
@@ -649,7 +881,7 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
                 ),
                 Switch(
                   value: rule.isActive,
-                  activeThumbColor: AppColors.primary,
+                  activeThumbColor: rule.isCredit ? AppColors.income : AppColors.primary,
                   onChanged: (val) {
                     ref.read(recurringProvider.notifier).toggleActive(rule.id!, val);
                   },
@@ -666,7 +898,10 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
                     }
                   },
                   itemBuilder: (_) => [
-                    const PopupMenuItem(value: 'process', child: Text('Process / Retry Debit Now')),
+                    PopupMenuItem(
+                      value: 'process',
+                      child: Text(rule.isCredit ? 'Credit This Income Now' : 'Process / Retry Debit Now'),
+                    ),
                     const PopupMenuItem(value: 'edit', child: Text('Edit')),
                     const PopupMenuItem(value: 'delete', child: Text('Delete', style: TextStyle(color: Colors.red))),
                   ],
@@ -716,11 +951,11 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
                 ),
                 // Amount
                 Text(
-                  AppFormatters.currency(rule.amount),
-                  style: const TextStyle(
+                  '${rule.isCredit ? '+' : ''}${AppFormatters.currency(rule.amount)}',
+                  style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary,
+                    color: rule.isCredit ? AppColors.income : AppColors.textPrimary,
                   ),
                 ),
               ],
@@ -739,7 +974,7 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
                       'Next Due: ${rule.nextDueDate}',
                       style: TextStyle(
                         fontSize: 11,
-                        color: rule.isDue ? AppColors.primary : AppColors.textSecondary,
+                        color: rule.isDue ? (rule.isCredit ? AppColors.income : AppColors.primary) : AppColors.textSecondary,
                         fontWeight: rule.isDue ? FontWeight.bold : FontWeight.normal,
                       ),
                     ),
@@ -752,54 +987,70 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
                       color: Colors.grey.shade200,
                       borderRadius: BorderRadius.circular(4),
                     ),
-                    child: const Text('Paused', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                    child: const Text('PAUSED', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey)),
                   )
                 else if (isFailed)
-                  InkWell(
-                    onTap: () {
-                      ref.read(recurringProvider.notifier).retryRule(rule.id!, context: context);
-                    },
-                    borderRadius: BorderRadius.circular(6),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade50,
-                        border: Border.all(color: Colors.red.shade300),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.refresh, size: 12, color: Colors.red),
-                          SizedBox(width: 4),
-                          Text(
-                            'Low Bal • Tap to Retry',
-                            style: TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade100,
+                      borderRadius: BorderRadius.circular(4),
                     ),
+                    child: Text('LOW BALANCE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red.shade800)),
                   )
                 else if (rule.lastStatus == 'SUCCESS')
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: Colors.green.shade50,
+                      color: Colors.green.shade100,
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
-                      '✓ Debited on ${rule.lastProcessedDate ?? ''}',
-                      style: TextStyle(fontSize: 10, color: Colors.green.shade800, fontWeight: FontWeight.w600),
+                      rule.isCredit ? 'CREDITED' : 'ACTIVE',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green.shade800),
                     ),
                   ),
               ],
             ),
+
+            if (rule.lastStatusMessage != null && rule.lastStatusMessage!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                rule.lastStatusMessage!,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontStyle: FontStyle.italic,
+                  color: isFailed ? Colors.red.shade700 : AppColors.textSecondary,
+                ),
+              ),
+            ],
           ],
         ),
       ),
     );
   }
 
-  IconData _getTypeIcon(String type) {
+  IconData _getTypeIcon(String type, bool isCredit) {
+    if (isCredit) {
+      switch (type.toLowerCase()) {
+        case 'salary':
+          return Icons.work_outline_rounded;
+        case 'rental income':
+          return Icons.real_estate_agent_outlined;
+        case 'pension':
+          return Icons.elderly_rounded;
+        case 'interest / dividend':
+        case 'interest':
+        case 'dividend':
+          return Icons.account_balance_wallet_outlined;
+        case 'business / freelance':
+        case 'freelance':
+        case 'business':
+          return Icons.store_rounded;
+        default:
+          return Icons.paid_outlined;
+      }
+    }
     switch (type.toLowerCase()) {
       case 'sip':
         return Icons.trending_up_rounded;
@@ -815,7 +1066,8 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
     }
   }
 
-  Color _getTypeColor(String type) {
+  Color _getTypeColor(String type, bool isCredit) {
+    if (isCredit) return AppColors.income;
     switch (type.toLowerCase()) {
       case 'sip':
         return AppColors.investment;
@@ -836,8 +1088,8 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Delete "${rule.title}"?'),
-        content: const Text(
-          'Are you sure you want to delete this auto-debit rule? Past recorded transactions will not be removed.',
+        content: Text(
+          'Are you sure you want to delete this ${rule.isCredit ? 'auto-income' : 'auto-debit'} rule? Past recorded transactions will not be removed.',
         ),
         actions: [
           TextButton(
@@ -851,7 +1103,7 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
               if (ctx.mounted) Navigator.pop(ctx);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Auto-debit rule deleted')),
+                  SnackBar(content: Text('${rule.isCredit ? 'Auto-income' : 'Auto-debit'} rule deleted')),
                 );
               }
             },
@@ -870,7 +1122,7 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
           children: [
             Icon(Icons.shield_outlined, color: AppColors.primary),
             SizedBox(width: 8),
-            Text('Smart Auto-Debit Shield'),
+            Text('Smart Recurring Engine'),
           ],
         ),
         content: const Column(
@@ -878,19 +1130,19 @@ class _RecurringRulesScreenState extends ConsumerState<RecurringRulesScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '1. Fixed Date Execution:',
+              '1. Auto-Income (Credits):',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
             Text(
-              'Your SIPs, Loans, and Rent auto-deduct on their designated day of the month without manual entry.\n',
+              'Set your monthly salary, tenant rent, and dividends once. On the scheduled date, it automatically credits into your bank account.\n',
               style: TextStyle(fontSize: 13),
             ),
             Text(
-              '2. Balance Verification Guarantee:',
+              '2. Auto-Debits (Deductions):',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
             Text(
-              'Before any deduction, the app checks if the selected bank account has sufficient balance. If funds are insufficient, it skips the deduction and alerts you so your balance is never negative.\n',
+              'Your SIP investments, EMIs, and bills auto-deduct only if the account has enough balance, so your balance is never negative.\n',
               style: TextStyle(fontSize: 13),
             ),
             Text(

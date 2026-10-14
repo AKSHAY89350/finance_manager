@@ -5,6 +5,7 @@ import '../models/recurring_rule.dart';
 import '../services/auto_debit_service.dart';
 import 'bank_provider.dart';
 import 'expense_provider.dart';
+import 'income_provider.dart';
 
 class RecurringNotifier extends StateNotifier<AsyncValue<List<RecurringRule>>> {
   final Ref ref;
@@ -50,8 +51,7 @@ class RecurringNotifier extends StateNotifier<AsyncValue<List<RecurringRule>>> {
     await loadRules();
   }
 
-  /// Checks and automatically executes all due recurring auto-debits (SIP, EMI, loans, bills).
-  /// Verifies bank balance before deduction.
+  /// Checks and automatically executes all due recurring rules (Auto-Debits and Auto-Credits).
   Future<AutoDebitExecutionReport> processDueAutoDebits({
     BuildContext? context,
     bool showFeedback = false,
@@ -59,8 +59,9 @@ class RecurringNotifier extends StateNotifier<AsyncValue<List<RecurringRule>>> {
     final report = await AutoDebitService.processDueAutoDebits();
 
     if (report.hasChanges) {
-      // Reload providers since expenses and balances were updated
+      // Reload providers since expenses, income, and balances were updated
       await ref.read(expenseProvider.notifier).loadExpenses();
+      await ref.read(incomeProvider.notifier).loadIncome();
       await ref.read(bankProvider.notifier).loadBanks();
       await loadRules();
 
@@ -71,7 +72,7 @@ class RecurringNotifier extends StateNotifier<AsyncValue<List<RecurringRule>>> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                '⚡ ${report.executed.length} Auto-Debit(s) processed. ⚠️ ${report.skippedLowBalance.length} skipped due to low balance.',
+                '⚡ ${report.executed.length} Recurring transaction(s) processed. ⚠️ ${report.skippedLowBalance.length} skipped due to low balance.',
               ),
               backgroundColor: Colors.orange.shade800,
               duration: const Duration(seconds: 4),
@@ -80,7 +81,7 @@ class RecurringNotifier extends StateNotifier<AsyncValue<List<RecurringRule>>> {
         } else if (report.executed.isNotEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('⚡ ${report.executed.length} Auto-Debit(s) successfully processed!'),
+              content: Text('⚡ ${report.executed.length} Recurring transaction(s) processed successfully!'),
               backgroundColor: Colors.green.shade700,
               duration: const Duration(seconds: 3),
             ),
@@ -100,7 +101,7 @@ class RecurringNotifier extends StateNotifier<AsyncValue<List<RecurringRule>>> {
     } else if (showFeedback && context != null && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('All auto-debits are up to date. No pending payments due.'),
+          content: Text('All recurring transactions are up to date. No pending actions.'),
         ),
       );
     }
@@ -108,12 +109,13 @@ class RecurringNotifier extends StateNotifier<AsyncValue<List<RecurringRule>>> {
     return report;
   }
 
-  /// Retries processing a single rule (e.g. after user deposits funds).
+  /// Retries processing a single rule.
   Future<AutoDebitResult> retryRule(int id, {BuildContext? context}) async {
     final result = await AutoDebitService.executeSingleRule(id);
 
     if (result.success) {
       await ref.read(expenseProvider.notifier).loadExpenses();
+      await ref.read(incomeProvider.notifier).loadIncome();
       await ref.read(bankProvider.notifier).loadBanks();
       await loadRules();
 
@@ -149,7 +151,7 @@ final recurringProvider =
 /// Holds the latest execution report for banner display
 final latestAutoDebitReportProvider = StateProvider<AutoDebitExecutionReport?>((ref) => null);
 
-/// Filtered upcoming active auto-debits sorted by next due date
+/// Filtered upcoming active recurring rules sorted by next due date
 final upcomingAutoDebitsProvider = Provider<List<RecurringRule>>((ref) {
   final rulesAsync = ref.watch(recurringProvider);
   return rulesAsync.maybeWhen(
@@ -162,10 +164,23 @@ final upcomingAutoDebitsProvider = Provider<List<RecurringRule>>((ref) {
   );
 });
 
-/// Total monthly recurring commitment amount for active rules
+/// Total monthly recurring commitment amount for active debit rules (Outflow)
 final totalMonthlyRecurringProvider = Provider<double>((ref) {
   final rules = ref.watch(upcomingAutoDebitsProvider);
-  return rules.fold<double>(0.0, (sum, r) => sum + r.amount);
+  return rules.where((r) => r.isDebit).fold<double>(0.0, (sum, r) => sum + r.amount);
+});
+
+/// Total monthly recurring income for active credit rules (Inflow)
+final totalMonthlyIncomeProvider = Provider<double>((ref) {
+  final rules = ref.watch(upcomingAutoDebitsProvider);
+  return rules.where((r) => r.isCredit).fold<double>(0.0, (sum, r) => sum + r.amount);
+});
+
+/// Net monthly recurring cash flow (Inflow - Outflow)
+final netMonthlyRecurringFlowProvider = Provider<double>((ref) {
+  final income = ref.watch(totalMonthlyIncomeProvider);
+  final deductions = ref.watch(totalMonthlyRecurringProvider);
+  return income - deductions;
 });
 
 /// Count of rules with INSUFFICIENT_BALANCE status

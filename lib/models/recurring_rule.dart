@@ -3,7 +3,7 @@ import '../utils/formatters.dart';
 class RecurringRule {
   final int? id;
   final String title;
-  final String type; // 'SIP', 'Loan EMI', 'Rent', 'Bill', 'Other'
+  final String type; // For DEBIT: 'SIP', 'Loan EMI', 'Rent', 'Bill', 'Other' | For CREDIT: 'Salary', 'Rental Income', 'Pension', etc.
   final String category;
   final String? subCategory;
   final double amount;
@@ -16,6 +16,7 @@ class RecurringRule {
   final String? notes;
   final String lastStatus; // 'PENDING', 'SUCCESS', 'INSUFFICIENT_BALANCE', 'FAILED'
   final String? lastStatusMessage;
+  final String direction; // 'DEBIT' (Expense Outflow) or 'CREDIT' (Income Inflow)
 
   RecurringRule({
     this.id,
@@ -33,7 +34,11 @@ class RecurringRule {
     this.notes,
     this.lastStatus = 'PENDING',
     this.lastStatusMessage,
+    this.direction = 'DEBIT',
   });
+
+  bool get isDebit => direction == 'DEBIT';
+  bool get isCredit => direction == 'CREDIT';
 
   Map<String, dynamic> toMap() {
     return {
@@ -52,6 +57,7 @@ class RecurringRule {
       'notes': notes,
       'last_status': lastStatus,
       'last_status_message': lastStatusMessage,
+      'direction': direction,
     };
   }
 
@@ -72,6 +78,7 @@ class RecurringRule {
       notes: map['notes'] as String?,
       lastStatus: (map['last_status'] as String?) ?? 'PENDING',
       lastStatusMessage: map['last_status_message'] as String?,
+      direction: (map['direction'] as String?) ?? 'DEBIT',
     );
   }
 
@@ -91,6 +98,7 @@ class RecurringRule {
     String? notes,
     String? lastStatus,
     String? lastStatusMessage,
+    String? direction,
   }) {
     return RecurringRule(
       id: id ?? this.id,
@@ -108,6 +116,7 @@ class RecurringRule {
       notes: notes ?? this.notes,
       lastStatus: lastStatus ?? this.lastStatus,
       lastStatusMessage: lastStatusMessage ?? this.lastStatusMessage,
+      direction: direction ?? this.direction,
     );
   }
 

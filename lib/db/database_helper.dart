@@ -40,6 +40,9 @@ class DatabaseHelper {
         await db.execute('CREATE INDEX IF NOT EXISTS idx_transfers_from ON ${AppConstants.tableTransfers}(from_bank)');
         await db.execute('CREATE INDEX IF NOT EXISTS idx_transfers_to ON ${AppConstants.tableTransfers}(to_bank)');
         await db.execute('CREATE INDEX IF NOT EXISTS idx_transfers_date ON ${AppConstants.tableTransfers}(date)');
+        try {
+          await db.execute("ALTER TABLE ${AppConstants.tableRecurringRules} ADD COLUMN direction TEXT NOT NULL DEFAULT 'DEBIT'");
+        } catch (_) {}
       },
     );
   }
@@ -290,7 +293,8 @@ class DatabaseHelper {
         is_active           INTEGER NOT NULL DEFAULT 1,
         notes               TEXT,
         last_status         TEXT    DEFAULT 'PENDING',
-        last_status_message TEXT
+        last_status_message TEXT,
+        direction           TEXT    NOT NULL DEFAULT 'DEBIT'
       )
     ''');
 

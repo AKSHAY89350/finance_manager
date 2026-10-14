@@ -183,12 +183,21 @@ class AppConstants {
   static const String tableRecurringRules      = 'recurring_rules';
   static const String tableInitialInvestments  = 'initial_investments';
 
-  // ── Recurring Auto-Debit Types ─────────────────────────────────
+  // ── Recurring Auto-Debit & Auto-Income Types ───────────────────
   static const List<String> recurringTypes = [
     'SIP',
     'Loan EMI',
     'Rent',
     'Bill',
     'Other',
+  ];
+
+  static const List<String> recurringIncomeTypes = [
+    'Salary',
+    'Rental Income',
+    'Pension',
+    'Interest / Dividend',
+    'Business / Freelance',
+    'Other Income',
   ];
 }
