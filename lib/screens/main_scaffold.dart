@@ -8,6 +8,7 @@ import 'transactions/transaction_list_screen.dart';
 import 'reports/reports_screen.dart';
 import 'investments/investment_screen.dart';
 import 'settings/settings_screen.dart';
+import 'transactions/review_inbox_screen.dart';
 
 /// Provides the currently selected tab index across the app.
 final selectedTabProvider = StateProvider<int>((ref) => 0);
@@ -21,14 +22,67 @@ class MainScaffold extends ConsumerStatefulWidget {
   ConsumerState<MainScaffold> createState() => _MainScaffoldState();
 }
 
-class _MainScaffoldState extends ConsumerState<MainScaffold> {
+class _MainScaffoldState extends ConsumerState<MainScaffold> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(recurringProvider.notifier).processDueAutoDebits(context: context);
       SmsSyncService.instance.initialize(ref);
+      _triggerAutoSync();
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // User returned to the app (e.g. from GPay, PhonePe, Paytm, or SMS)
+      _triggerAutoSync();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  Future<void> _triggerAutoSync() async {
+    final newCount = await SmsSyncService.instance.syncOnAppOpen(ref);
+    if (newCount > 0 && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          backgroundColor: const Color(0xFF1E293B),
+          content: Row(
+            children: [
+              const Icon(Icons.sync_rounded, color: Colors.greenAccent, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Auto-synced $newCount new transaction(s) from SMS',
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+          action: SnackBarAction(
+            label: 'Review',
+            textColor: Colors.amberAccent,
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ReviewInboxScreen()),
+              );
+            },
+          ),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
   }
 
   static const List<_TabItem> _tabs = [

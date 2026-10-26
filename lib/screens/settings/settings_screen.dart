@@ -13,6 +13,7 @@ import '../../providers/income_provider.dart';
 import '../../providers/investment_provider.dart';
 import '../../providers/transfer_provider.dart';
 import '../../services/biometric_service.dart';
+import '../../services/sms_sync_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/constants.dart';
 import '../../utils/excel_import_helper.dart';
@@ -613,6 +614,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     leading: const Icon(Icons.inbox_outlined, color: AppColors.primary),
                     title: const Text('Review Inbox (Auto-Detected)'),
                     subtitle: const Text('Review, confirm or edit pending SMS and UPI entries'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const ReviewInboxScreen()),
+                      );
+                    },
+                  ),
+                ),
+                Card(
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+                  child: ListTile(
+                    leading: const Icon(Icons.sync_rounded, color: Colors.blue),
+                    title: const Text('SMS Auto-Sync on App Open'),
+                    subtitle: FutureBuilder<String?>(
+                      future: SmsSyncService.instance.getLastSyncTimeFormatted(),
+                      builder: (context, snapshot) {
+                        final timeStr = snapshot.data;
+                        return Text(timeStr != null
+                            ? 'Synced up to: $timeStr • Incremental active'
+                            : 'Auto-syncs new bank messages whenever app opens');
+                      },
+                    ),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () {
                       Navigator.push(

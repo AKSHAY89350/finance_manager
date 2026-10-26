@@ -62,6 +62,39 @@ class PendingNotifier extends StateNotifier<AsyncValue<List<PendingTransaction>>
     return true;
   }
 
+  /// Process multiple messages in a single batch, calling loadPending() only once.
+  Future<int> processIncomingMessagesBatch(List<Map<String, dynamic>> messages) async {
+    if (messages.isEmpty) return 0;
+    int addedCount = 0;
+
+    for (final item in messages) {
+      final body = item['body'] as String? ?? '';
+      if (body.trim().isEmpty) continue;
+      final sender = item['sender'] as String?;
+      final timestampMs = item['timestamp'] as int?;
+      final date = timestampMs != null ? DateTime.fromMillisecondsSinceEpoch(timestampMs) : null;
+
+      final parsed = await SmsParserService.parseMessage(
+        body,
+        sender: sender,
+        timestamp: date,
+      );
+
+      if (parsed == null) continue;
+
+      final exists = await DatabaseHelper.instance.hasTransactionFingerprint(parsed.fingerprint);
+      if (exists) continue;
+
+      await DatabaseHelper.instance.insertPendingTransaction(parsed);
+      addedCount++;
+    }
+
+    if (addedCount > 0) {
+      await loadPending();
+    }
+    return addedCount;
+  }
+
   /// Confirm transaction and move it into the official expenses or income ledger
   Future<void> confirmTransaction(
     PendingTransaction txn, {

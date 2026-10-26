@@ -81,9 +81,10 @@ class MainActivity : FlutterFragmentActivity() {
                 }
 
                 "fetchRecentInboxSms" -> {
-                    val limit = (call.argument<Int>("limit") ?: 50).coerceAtMost(200)
+                    val limit = (call.argument<Int>("limit") ?: 100).coerceAtMost(500)
                     val daysBack = call.argument<Int>("daysBack") ?: 7
-                    val list = fetchInboxMessages(limit, daysBack)
+                    val sinceTimestamp = call.argument<Number>("sinceTimestamp")?.toLong()
+                    val list = fetchInboxMessages(limit, daysBack, sinceTimestamp)
                     result.success(list)
                 }
 
@@ -106,18 +107,28 @@ class MainActivity : FlutterFragmentActivity() {
         smsChannel = null
     }
 
-    private fun fetchInboxMessages(limit: Int, daysBack: Int): List<Map<String, Any>> {
+    private fun fetchInboxMessages(limit: Int, daysBack: Int, sinceTimestamp: Long? = null): List<Map<String, Any>> {
         val messages = ArrayList<Map<String, Any>>()
         val hasRead = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
         if (!hasRead) return messages
 
         val uri = Uri.parse("content://sms/inbox")
-        val cutoffTime = System.currentTimeMillis() - (daysBack.toLong() * 24 * 60 * 60 * 1000)
-
         val projection = arrayOf("_id", "address", "body", "date")
-        val selection = "date >= ?"
-        val selectionArgs = arrayOf(cutoffTime.toString())
-        val sortOrder = "date DESC LIMIT $limit"
+
+        val selection: String
+        val selectionArgs: Array<String>
+        val sortOrder: String
+
+        if (sinceTimestamp != null && sinceTimestamp > 0L) {
+            selection = "date > ?"
+            selectionArgs = arrayOf(sinceTimestamp.toString())
+            sortOrder = "date ASC LIMIT $limit"
+        } else {
+            val cutoffTime = System.currentTimeMillis() - (daysBack.toLong() * 24 * 60 * 60 * 1000)
+            selection = "date >= ?"
+            selectionArgs = arrayOf(cutoffTime.toString())
+            sortOrder = "date DESC LIMIT $limit"
+        }
 
         var cursor: Cursor? = null
         try {

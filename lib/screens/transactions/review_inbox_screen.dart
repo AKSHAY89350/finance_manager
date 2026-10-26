@@ -18,19 +18,44 @@ class _ReviewInboxScreenState extends ConsumerState<ReviewInboxScreen> {
   String? _bankFilter;
   String? _typeFilter;
   bool _isSyncing = false;
+  String? _lastSyncTime;
 
-  Future<void> _syncBankSms() async {
+  @override
+  void initState() {
+    super.initState();
+    _loadLastSyncTime();
+  }
+
+  Future<void> _loadLastSyncTime() async {
+    final formatted = await SmsSyncService.instance.getLastSyncTimeFormatted();
+    if (mounted) {
+      setState(() => _lastSyncTime = formatted);
+    }
+  }
+
+  Future<void> _syncBankSms({bool forceFullScan = false, int daysBack = 7}) async {
     setState(() => _isSyncing = true);
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Scanning phone SMS inbox for bank transactions...'),
-        duration: Duration(seconds: 1),
+      SnackBar(
+        content: Text(forceFullScan
+            ? 'Scanning all SMS from last $daysBack days...'
+            : 'Scanning new SMS since last sync...'),
+        duration: const Duration(seconds: 1),
       ),
     );
 
-    final result = await SmsSyncService.instance.syncRecentInbox(ref);
+    final result = await SmsSyncService.instance.syncRecentInbox(
+      ref,
+      forceFullScan: forceFullScan,
+      daysBack: daysBack,
+    );
     if (!mounted) return;
-    setState(() => _isSyncing = false);
+    setState(() {
+      _isSyncing = false;
+      if (result.lastSyncTimeFormatted != null) {
+        _lastSyncTime = result.lastSyncTimeFormatted;
+      }
+    });
 
     if (!result.permissionGranted) {
       showDialog(
@@ -73,6 +98,15 @@ class _ReviewInboxScreenState extends ConsumerState<ReviewInboxScreen> {
     );
   }
 
+  Future<void> _handleResetTimestamp() async {
+    await SmsSyncService.instance.resetSyncTimestamp();
+    await _loadLastSyncTime();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Sync timestamp reset. Next sync will scan past messages.')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final pendingAsync = ref.watch(pendingNotifierProvider);
@@ -89,70 +123,174 @@ class _ReviewInboxScreenState extends ConsumerState<ReviewInboxScreen> {
                     child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                   )
                 : const Icon(Icons.sync_rounded),
-            tooltip: 'Sync SMS from Phone',
+            tooltip: 'Sync New SMS',
             onPressed: _isSyncing ? null : () => _syncBankSms(),
           ),
-          IconButton(
-            icon: const Icon(Icons.add_comment_outlined),
-            tooltip: 'Simulate Test Bank SMS',
-            onPressed: () => _showSimulateDialog(context),
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh',
-            onPressed: () => ref.read(pendingNotifierProvider.notifier).loadPending(),
-          ),
-        ],
-      ),
-      body: pendingAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, _) => Center(child: Text('Error: $err')),
-        data: (list) {
-          if (list.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert_rounded),
+            tooltip: 'Sync Options',
+            onSelected: (val) async {
+              if (val == 'incremental') {
+                _syncBankSms();
+              } else if (val == 'full_30') {
+                _syncBankSms(forceFullScan: true, daysBack: 30);
+              } else if (val == 'reset_timestamp') {
+                _handleResetTimestamp();
+              } else if (val == 'simulate') {
+                _showSimulateDialog(context);
+              }
+            },
+            itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'incremental',
+                child: Row(
                   children: [
-                    Icon(Icons.mark_email_read_outlined, size: 72, color: Colors.green[400]),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'No Pending Transactions',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Incoming bank SMS alerts and UPI app notifications will automatically appear here for 1-tap review.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                    const SizedBox(height: 24),
-                    ElevatedButton.icon(
-                      icon: _isSyncing
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                            )
-                          : const Icon(Icons.sync_rounded),
-                      label: Text(_isSyncing ? 'Scanning Inbox...' : 'Sync Recent Bank SMS'),
-                      onPressed: _isSyncing ? null : () => _syncBankSms(),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.sms_outlined),
-                      label: const Text('Simulate Test Bank SMS'),
-                      onPressed: () => _showSimulateDialog(context),
-                    ),
+                    Icon(Icons.sync_rounded, size: 18, color: Colors.blue),
+                    SizedBox(width: 8),
+                    Text('Sync New SMS'),
                   ],
                 ),
               ),
-            );
-          }
+              const PopupMenuItem(
+                value: 'full_30',
+                child: Row(
+                  children: [
+                    Icon(Icons.history_rounded, size: 18, color: Colors.teal),
+                    SizedBox(width: 8),
+                    Text('Full Scan (Last 30 Days)'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'reset_timestamp',
+                child: Row(
+                  children: [
+                    Icon(Icons.restart_alt_rounded, size: 18, color: Colors.orange),
+                    SizedBox(width: 8),
+                    Text('Reset Sync Timestamp'),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'simulate',
+                child: Row(
+                  children: [
+                    Icon(Icons.add_comment_outlined, size: 18, color: Colors.purple),
+                    SizedBox(width: 8),
+                    Text('Simulate Test Bank SMS'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // SMS Sync Status Banner
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50.withValues(alpha: 0.6),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue.shade100),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.sync_rounded, color: Colors.blue, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Auto-Sync on App Open Active',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blue),
+                      ),
+                      Text(
+                        _lastSyncTime != null
+                            ? 'Synced up to: $_lastSyncTime'
+                            : 'Not synced yet • Tap Sync to scan',
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: _isSyncing ? null : () => _syncBankSms(),
+                  icon: _isSyncing
+                      ? const SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(strokeWidth: 1.5),
+                        )
+                      : const Icon(Icons.refresh_rounded, size: 16),
+                  label: const Text('Sync', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () => _syncBankSms(),
+              child: pendingAsync.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (err, _) => Center(child: Text('Error: $err')),
+                data: (list) {
+                  if (list.isEmpty) {
+                    return SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: Padding(
+                        padding: const EdgeInsets.all(32.0),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const SizedBox(height: 40),
+                            Icon(Icons.mark_email_read_outlined, size: 72, color: Colors.green[400]),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'No Pending Transactions',
+                              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Incoming bank SMS alerts and UPI app notifications will automatically appear here for 1-tap review.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                            const SizedBox(height: 24),
+                            ElevatedButton.icon(
+                              icon: _isSyncing
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.sync_rounded),
+                              label: Text(_isSyncing ? 'Scanning Inbox...' : 'Sync Recent Bank SMS'),
+                              onPressed: _isSyncing ? null : () => _syncBankSms(),
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            OutlinedButton.icon(
+                              icon: const Icon(Icons.sms_outlined),
+                              label: const Text('Simulate Test Bank SMS'),
+                              onPressed: () => _showSimulateDialog(context),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
 
           final uniqueBanks = list.map((e) => e.bank).toSet().toList();
           final displayed = list.where((txn) {
@@ -254,7 +392,11 @@ class _ReviewInboxScreenState extends ConsumerState<ReviewInboxScreen> {
           );
         },
       ),
-    );
+    ),
+  ),
+],
+),
+);
   }
 
   Widget _buildPendingCard(BuildContext context, PendingTransaction txn) {
