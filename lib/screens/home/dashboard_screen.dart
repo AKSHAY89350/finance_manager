@@ -9,6 +9,7 @@ import '../../utils/formatters.dart';
 import '../../providers/pending_provider.dart';
 import '../../providers/recurring_provider.dart';
 import '../transactions/review_inbox_screen.dart';
+import '../statements/statement_import_screen.dart';
 import '../recurring/recurring_rules_screen.dart';
 import '../../widgets/bank_balance_card.dart';
 import '../transactions/transaction_list_screen.dart';
@@ -28,6 +29,16 @@ class DashboardScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Overview'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            tooltip: 'Import Bank Statement (PDF)',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const StatementImportScreen()),
+              );
+            },
+          ),
           Stack(
             alignment: Alignment.center,
             children: [

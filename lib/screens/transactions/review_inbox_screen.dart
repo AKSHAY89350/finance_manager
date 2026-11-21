@@ -6,6 +6,7 @@ import '../../providers/bank_provider.dart';
 import '../../services/sms_sync_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/formatters.dart';
+import '../statements/statement_import_screen.dart';
 
 class ReviewInboxScreen extends ConsumerStatefulWidget {
   const ReviewInboxScreen({super.key});
@@ -116,6 +117,16 @@ class _ReviewInboxScreenState extends ConsumerState<ReviewInboxScreen> {
         title: const Text('Review Inbox'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            tooltip: 'Import Bank Statement (PDF)',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const StatementImportScreen()),
+              );
+            },
+          ),
+          IconButton(
             icon: _isSyncing
                 ? const SizedBox(
                     width: 20,
@@ -136,6 +147,11 @@ class _ReviewInboxScreenState extends ConsumerState<ReviewInboxScreen> {
                 _syncBankSms(forceFullScan: true, daysBack: 30);
               } else if (val == 'reset_timestamp') {
                 _handleResetTimestamp();
+              } else if (val == 'import_pdf') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const StatementImportScreen()),
+                );
               } else if (val == 'simulate') {
                 _showSimulateDialog(context);
               }
@@ -168,6 +184,16 @@ class _ReviewInboxScreenState extends ConsumerState<ReviewInboxScreen> {
                     Icon(Icons.restart_alt_rounded, size: 18, color: Colors.orange),
                     SizedBox(width: 8),
                     Text('Reset Sync Timestamp'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'import_pdf',
+                child: Row(
+                  children: [
+                    Icon(Icons.picture_as_pdf_rounded, size: 18, color: Colors.red),
+                    SizedBox(width: 8),
+                    Text('Import Statement (PDF)'),
                   ],
                 ),
               ),
