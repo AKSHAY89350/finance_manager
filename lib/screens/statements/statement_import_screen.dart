@@ -54,6 +54,15 @@ class _StatementImportScreenState extends State<StatementImportScreen> {
 
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
+
+        // Defensive guard: Prevent Out-Of-Memory (OOM) / heating from oversized non-statement PDFs
+        if (file.size > 20 * 1024 * 1024) {
+          setState(() {
+            _errorMessage = 'Selected PDF is too large (${(file.size / (1024 * 1024)).toStringAsFixed(1)} MB). Bank statements are usually under 10 MB. Please upload a standard statement.';
+          });
+          return;
+        }
+
         Uint8List? bytes = file.bytes;
 
         // On mobile, if bytes is null, read from path
