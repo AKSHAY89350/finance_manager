@@ -182,6 +182,7 @@ class AppConstants {
   static const String tableMerchantRules       = 'merchant_category_rules';
   static const String tableRecurringRules      = 'recurring_rules';
   static const String tableInitialInvestments  = 'initial_investments';
+  static const String tableBankPasswords       = 'bank_passwords';
 
   // ── Recurring Auto-Debit & Auto-Income Types ───────────────────
   static const List<String> recurringTypes = [

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../services/bank_statement_parser_service.dart';
 import '../../services/statement_deduplication_service.dart';
+import '../../db/database_helper.dart';
 import 'statement_review_screen.dart';
 
 class StatementImportScreen extends StatefulWidget {
@@ -21,6 +22,8 @@ class _StatementImportScreenState extends State<StatementImportScreen> {
   bool _obscurePassword = true;
   bool _isProcessing = false;
   String? _errorMessage;
+  List<String> _savedPasswords = [];
+  String? _selectedSavedPassword;
 
   final List<Map<String, dynamic>> _banks = [
     {'name': 'Auto-Detect', 'icon': Icons.auto_awesome_rounded},
@@ -31,6 +34,29 @@ class _StatementImportScreenState extends State<StatementImportScreen> {
     {'name': 'Kotak Bank', 'icon': Icons.account_balance_rounded},
     {'name': 'Credit Card', 'icon': Icons.credit_card_rounded},
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedPasswords();
+  }
+
+  Future<void> _loadSavedPasswords() async {
+    try {
+      final list = await DatabaseHelper.instance.getSavedPasswordsForBank(_selectedBank);
+      if (mounted) {
+        setState(() {
+          _savedPasswords = list;
+          if (_savedPasswords.isNotEmpty && _passwordController.text.isEmpty) {
+            _selectedSavedPassword = _savedPasswords.first;
+            _passwordController.text = _savedPasswords.first;
+          } else if (!_savedPasswords.contains(_selectedSavedPassword)) {
+            _selectedSavedPassword = null;
+          }
+        });
+      }
+    } catch (_) {}
+  }
 
   @override
   void dispose() {
@@ -104,11 +130,13 @@ class _StatementImportScreenState extends State<StatementImportScreen> {
       _errorMessage = null;
     });
 
+    final enteredPassword = _passwordController.text.trim();
+
     try {
       // 1. Extract transactions from PDF
       final rawTransactions = await BankStatementParserService.extractTransactions(
         pdfBytes: _fileBytes!,
-        password: _passwordController.text.trim().isEmpty ? null : _passwordController.text.trim(),
+        password: enteredPassword.isEmpty ? null : enteredPassword,
         bankName: _selectedBank,
       );
 
@@ -126,12 +154,19 @@ class _StatementImportScreenState extends State<StatementImportScreen> {
 
       if (!mounted) return;
       setState(() => _isProcessing = false);
-      _passwordController.clear(); // Security: Zero out sensitive password from memory
 
       // 3. Navigate to Review Screen
       final resolvedBank = (_selectedBank == 'Auto-Detect' && rawTransactions.isNotEmpty)
           ? rawTransactions.first.bankName
           : _selectedBank;
+
+      // Save verified password to local database for one-tap reuse
+      if (enteredPassword.isNotEmpty) {
+        await DatabaseHelper.instance.saveBankPassword(resolvedBank, enteredPassword);
+        await _loadSavedPasswords();
+      }
+
+      if (!mounted) return;
 
       Navigator.push(
         context,
@@ -169,34 +204,75 @@ class _StatementImportScreenState extends State<StatementImportScreen> {
                   const Text('PDF Password Required', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 ],
               ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(prompt, style: const TextStyle(fontSize: 14)),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _passwordController,
-                    obscureText: _obscurePassword,
-                    autofocus: true,
-                    decoration: InputDecoration(
-                      labelText: 'Statement Password',
-                      hintText: 'e.g. DOB (DDMM) + last 4 mobile digits',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                      suffixIcon: IconButton(
-                        icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off),
-                        onPressed: () {
-                          setModalState(() => _obscurePassword = !_obscurePassword);
-                        },
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(prompt, style: const TextStyle(fontSize: 14)),
+                    const SizedBox(height: 14),
+                    if (_savedPasswords.isNotEmpty) ...[
+                      InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: 'Use Saved Password',
+                          prefixIcon: const Icon(Icons.history_rounded, size: 20),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            isExpanded: true,
+                            isDense: true,
+                            value: _savedPasswords.contains(_passwordController.text) ? _passwordController.text : null,
+                            hint: const Text('Choose saved password', style: TextStyle(fontSize: 13)),
+                            items: _savedPasswords.map((p) {
+                              final preview = p.length > 4
+                                  ? '${p.substring(0, 2)}${'•' * (p.length - 4)}${p.substring(p.length - 2)}'
+                                  : '••••••••';
+                              final isLatest = _savedPasswords.first == p;
+                              return DropdownMenuItem<String>(
+                                value: p,
+                                child: Text(
+                                  '$preview ${isLatest ? '(Last Used)' : '(Saved)'}',
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (val) {
+                              if (val != null) {
+                                setModalState(() {
+                                  _passwordController.text = val;
+                                });
+                              }
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    TextField(
+                      controller: _passwordController,
+                      obscureText: _obscurePassword,
+                      autofocus: _savedPasswords.isEmpty,
+                      decoration: InputDecoration(
+                        labelText: 'Statement Password',
+                        hintText: 'e.g. DOB (DDMM) + last 4 mobile digits',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        suffixIcon: IconButton(
+                          icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off),
+                          onPressed: () {
+                            setModalState(() => _obscurePassword = !_obscurePassword);
+                          },
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '💡 Hint for HDFC: First 4 chars of name + DDMM or CustID.\n💡 SBI: Date of Birth (DDMM) + last 4 digits of registered phone.',
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    Text(
+                      '💡 Hint for HDFC: First 4 chars of name + DDMM or CustID.\n💡 SBI: Date of Birth (DDMM) + last 4 digits of registered phone.',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                    ),
+                  ],
+                ),
               ),
               actions: [
                 TextButton(
@@ -299,7 +375,14 @@ class _StatementImportScreenState extends State<StatementImportScreen> {
                     fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                   ),
                   onSelected: (val) {
-                    if (val) setState(() => _selectedBank = b['name'] as String);
+                    if (val) {
+                      setState(() {
+                        _selectedBank = b['name'] as String;
+                        _selectedSavedPassword = null;
+                        _passwordController.clear();
+                      });
+                      _loadSavedPasswords();
+                    }
                   },
                 );
               }).toList(),
@@ -377,17 +460,115 @@ class _StatementImportScreenState extends State<StatementImportScreen> {
             const SizedBox(height: 24),
 
             // 3. Password Field
-            const Text(
-              '3. STATEMENT PASSWORD (IF ENCRYPTED)',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.8, color: Colors.blueGrey),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  '3. STATEMENT PASSWORD (IF ENCRYPTED)',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.8, color: Colors.blueGrey),
+                ),
+                if (_savedPasswords.isNotEmpty)
+                  Text(
+                    '${_savedPasswords.length} saved',
+                    style: TextStyle(fontSize: 11, color: Colors.green.shade700, fontWeight: FontWeight.w600),
+                  ),
+              ],
             ),
             const SizedBox(height: 10),
+            if (_savedPasswords.isNotEmpty) ...[
+              InputDecorator(
+                decoration: InputDecoration(
+                  labelText: 'Select Saved Password',
+                  prefixIcon: const Icon(Icons.history_rounded),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  suffixIcon: _selectedSavedPassword != null
+                      ? IconButton(
+                          tooltip: 'Clear selection',
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: () {
+                            setState(() {
+                              _selectedSavedPassword = null;
+                              _passwordController.clear();
+                            });
+                          },
+                        )
+                      : null,
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    isExpanded: true,
+                    isDense: true,
+                    value: _selectedSavedPassword,
+                    hint: const Text('Choose a saved password'),
+                    items: _savedPasswords.map((p) {
+                      final preview = p.length > 4
+                          ? '${p.substring(0, 2)}${'•' * (p.length - 4)}${p.substring(p.length - 2)}'
+                          : '••••••••';
+                      final isLatest = _savedPasswords.first == p;
+                      return DropdownMenuItem<String>(
+                        value: p,
+                        child: Row(
+                          children: [
+                            Icon(Icons.key_rounded, size: 16, color: theme.primaryColor),
+                            const SizedBox(width: 8),
+                            Text(preview, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                            const SizedBox(width: 8),
+                            Text(
+                              isLatest ? '(Last Used)' : '(Saved)',
+                              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (val) {
+                      setState(() {
+                        _selectedSavedPassword = val;
+                        if (val != null) {
+                          _passwordController.text = val;
+                        }
+                      });
+                    },
+                  ),
+                ),
+              ),
+              if (_selectedSavedPassword != null) ...[
+                const SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    icon: const Icon(Icons.delete_outline, size: 14, color: Colors.red),
+                    label: const Text('Forget this password', style: TextStyle(fontSize: 11, color: Colors.red)),
+                    onPressed: () async {
+                      final toDelete = _selectedSavedPassword!;
+                      await DatabaseHelper.instance.deleteSavedPassword(toDelete);
+                      setState(() {
+                        _passwordController.clear();
+                        _selectedSavedPassword = null;
+                      });
+                      await _loadSavedPasswords();
+                    },
+                  ),
+                ),
+              ],
+              const SizedBox(height: 10),
+            ],
             TextField(
               controller: _passwordController,
               obscureText: _obscurePassword,
+              onChanged: (val) {
+                if (_selectedSavedPassword != null && val != _selectedSavedPassword) {
+                  setState(() => _selectedSavedPassword = null);
+                }
+              },
               decoration: InputDecoration(
                 labelText: 'PDF Password (Optional)',
-                hintText: 'Leave empty if unencrypted',
+                hintText: _savedPasswords.isNotEmpty ? 'Or type / edit password directly' : 'Leave empty if unencrypted',
                 prefixIcon: const Icon(Icons.lock_outline_rounded),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 suffixIcon: IconButton(

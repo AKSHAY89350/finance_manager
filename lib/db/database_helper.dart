@@ -40,6 +40,15 @@ class DatabaseHelper {
         await db.execute('CREATE INDEX IF NOT EXISTS idx_transfers_from ON ${AppConstants.tableTransfers}(from_bank)');
         await db.execute('CREATE INDEX IF NOT EXISTS idx_transfers_to ON ${AppConstants.tableTransfers}(to_bank)');
         await db.execute('CREATE INDEX IF NOT EXISTS idx_transfers_date ON ${AppConstants.tableTransfers}(date)');
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS ${AppConstants.tableBankPasswords} (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            bank_name TEXT NOT NULL,
+            password  TEXT NOT NULL,
+            last_used TEXT NOT NULL,
+            UNIQUE(bank_name, password)
+          )
+        ''');
         try {
           await db.execute("ALTER TABLE ${AppConstants.tableRecurringRules} ADD COLUMN direction TEXT NOT NULL DEFAULT 'DEBIT'");
         } catch (_) {}
@@ -311,6 +320,17 @@ class DatabaseHelper {
         starting_balance REAL    NOT NULL DEFAULT 0,
         category         TEXT    NOT NULL DEFAULT 'SIP & Investments',
         notes            TEXT
+      )
+    ''');
+
+    // Table 11: bank_passwords (Saved statement passwords for quick autofill/dropdown)
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${AppConstants.tableBankPasswords} (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        bank_name TEXT NOT NULL,
+        password  TEXT NOT NULL,
+        last_used TEXT NOT NULL,
+        UNIQUE(bank_name, password)
       )
     ''');
   }
@@ -1252,6 +1272,56 @@ class DatabaseHelper {
       limit: 1,
     );
     return rows.isNotEmpty ? rows.first : null;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // BANK STATEMENT PASSWORDS (LOCAL PERSISTENCE & AUTOFILL)
+  // ═══════════════════════════════════════════════════════════════
+
+  /// Saves or updates the last used statement password for a bank.
+  Future<void> saveBankPassword(String bankName, String password) async {
+    if (password.trim().isEmpty) return;
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    await db.insert(
+      AppConstants.tableBankPasswords,
+      {
+        'bank_name': bankName.trim(),
+        'password': password.trim(),
+        'last_used': now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Returns list of previously saved passwords for a specific bank or all banks,
+  /// ordered by most recently used first.
+  Future<List<String>> getSavedPasswordsForBank(String bankName) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      AppConstants.tableBankPasswords,
+      where: 'bank_name = ? OR bank_name = ? OR ? = ?',
+      whereArgs: [bankName.trim(), 'All', bankName.trim(), 'Auto-Detect'],
+      orderBy: 'last_used DESC',
+    );
+    final Set<String> distinct = {};
+    for (final m in maps) {
+      final p = m['password'] as String?;
+      if (p != null && p.trim().isNotEmpty) {
+        distinct.add(p.trim());
+      }
+    }
+    return distinct.toList();
+  }
+
+  /// Delete a saved bank password from the database.
+  Future<int> deleteSavedPassword(String password) async {
+    final db = await database;
+    return await db.delete(
+      AppConstants.tableBankPasswords,
+      where: 'password = ?',
+      whereArgs: [password.trim()],
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════
