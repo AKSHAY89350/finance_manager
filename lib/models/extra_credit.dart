@@ -5,6 +5,10 @@ class ExtraCredit {
   final double amount;
   final String mode;
   final String bank;
+  final String? subCategory;
+  final double? buyAmount;
+  final double? profitAmount;
+  final bool isInvestmentRedemption;
 
   ExtraCredit({
     this.id,
@@ -13,6 +17,10 @@ class ExtraCredit {
     required this.amount,
     required this.mode,
     required this.bank,
+    this.subCategory,
+    this.buyAmount,
+    this.profitAmount,
+    this.isInvestmentRedemption = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -23,6 +31,10 @@ class ExtraCredit {
       'amount': amount,
       'mode': mode,
       'bank': bank,
+      if (subCategory != null) 'sub_category': subCategory,
+      if (buyAmount != null) 'buy_amount': buyAmount,
+      if (profitAmount != null) 'profit_amount': profitAmount,
+      'is_investment_redemption': isInvestmentRedemption ? 1 : 0,
     };
   }
 
@@ -34,6 +46,10 @@ class ExtraCredit {
       amount: (map['amount'] as num).toDouble(),
       mode: map['mode'] as String,
       bank: map['bank'] as String,
+      subCategory: map['sub_category'] as String?,
+      buyAmount: (map['buy_amount'] as num?)?.toDouble(),
+      profitAmount: (map['profit_amount'] as num?)?.toDouble(),
+      isInvestmentRedemption: (map['is_investment_redemption'] as int? ?? 0) == 1,
     );
   }
 
@@ -44,6 +60,10 @@ class ExtraCredit {
     double? amount,
     String? mode,
     String? bank,
+    String? subCategory,
+    double? buyAmount,
+    double? profitAmount,
+    bool? isInvestmentRedemption,
   }) {
     return ExtraCredit(
       id: id ?? this.id,
@@ -52,6 +72,10 @@ class ExtraCredit {
       amount: amount ?? this.amount,
       mode: mode ?? this.mode,
       bank: bank ?? this.bank,
+      subCategory: subCategory ?? this.subCategory,
+      buyAmount: buyAmount ?? this.buyAmount,
+      profitAmount: profitAmount ?? this.profitAmount,
+      isInvestmentRedemption: isInvestmentRedemption ?? this.isInvestmentRedemption,
     );
   }
 }

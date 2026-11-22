@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../db/database_helper.dart';
 import '../../providers/expense_provider.dart';
 import '../../providers/financial_health_provider.dart';
+import '../../providers/income_provider.dart';
 import '../../providers/investment_provider.dart';
 import '../../screens/main_scaffold.dart';
 import '../../utils/app_colors.dart';
@@ -27,6 +28,7 @@ class _InvestmentScreenState extends ConsumerState<InvestmentScreen> {
   double _totalSip = 0.0;
   double _totalFdRd = 0.0;
   double _totalPpfRetirement = 0.0;
+  double _totalRealizedProfit = 0.0;
   int _totalTxnCount = 0;
 
   List<Map<String, dynamic>> _allocationList = [];
@@ -46,6 +48,7 @@ class _InvestmentScreenState extends ConsumerState<InvestmentScreen> {
     final total = await DatabaseHelper.instance.getTotalInvested(year: _selectedYear);
     final alloc = await DatabaseHelper.instance.getInvestmentAllocation(year: _selectedYear);
     final monthly = await DatabaseHelper.instance.getMonthlyInvestmentBreakdown(_selectedYear);
+    final profit = await DatabaseHelper.instance.getTotalRealizedProfit(year: _selectedYear);
 
     double sip = 0.0;
     double fdRd = 0.0;
@@ -73,6 +76,7 @@ class _InvestmentScreenState extends ConsumerState<InvestmentScreen> {
         _totalSip = sip;
         _totalFdRd = fdRd;
         _totalPpfRetirement = ppf;
+        _totalRealizedProfit = profit;
         _totalTxnCount = txns;
         _allocationList = alloc;
         _monthlyRows = monthly;
@@ -103,6 +107,9 @@ class _InvestmentScreenState extends ConsumerState<InvestmentScreen> {
       _loadInvestmentData();
     });
     ref.listen(investmentProvider, (prev, next) {
+      _loadInvestmentData();
+    });
+    ref.listen(incomeProvider, (prev, next) {
       _loadInvestmentData();
     });
 
@@ -184,6 +191,32 @@ class _InvestmentScreenState extends ConsumerState<InvestmentScreen> {
                           'Starting holdings + $_totalTxnCount verified investments across asset classes',
                           style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 12),
                         ),
+                        if (_totalRealizedProfit != 0.0) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.white30),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  _totalRealizedProfit >= 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'Realized Gain: ${_totalRealizedProfit >= 0 ? '+' : ''}${AppFormatters.currency(_totalRealizedProfit)}',
+                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),

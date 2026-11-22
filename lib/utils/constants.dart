@@ -16,6 +16,7 @@ class AppConstants {
   static const List<String> incomeModes = [
     'Salary',
     'Bonus',
+    'Stock / Investment Sale',
     'Loan Received',
     'Interest',
     'Freelance',

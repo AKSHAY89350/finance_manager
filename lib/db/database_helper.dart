@@ -52,6 +52,18 @@ class DatabaseHelper {
         try {
           await db.execute("ALTER TABLE ${AppConstants.tableRecurringRules} ADD COLUMN direction TEXT NOT NULL DEFAULT 'DEBIT'");
         } catch (_) {}
+        try {
+          await db.execute("ALTER TABLE ${AppConstants.tableExtraCredit} ADD COLUMN sub_category TEXT");
+        } catch (_) {}
+        try {
+          await db.execute("ALTER TABLE ${AppConstants.tableExtraCredit} ADD COLUMN buy_amount REAL");
+        } catch (_) {}
+        try {
+          await db.execute("ALTER TABLE ${AppConstants.tableExtraCredit} ADD COLUMN profit_amount REAL");
+        } catch (_) {}
+        try {
+          await db.execute("ALTER TABLE ${AppConstants.tableExtraCredit} ADD COLUMN is_investment_redemption INTEGER NOT NULL DEFAULT 0");
+        } catch (_) {}
       },
     );
   }
@@ -179,12 +191,16 @@ class DatabaseHelper {
     // Table 3: extra_credit (income / salary)
     await db.execute('''
       CREATE TABLE IF NOT EXISTS ${AppConstants.tableExtraCredit} (
-        id        INTEGER PRIMARY KEY AUTOINCREMENT,
-        date      TEXT    NOT NULL,
-        user_name TEXT,
-        amount    REAL    NOT NULL CHECK(amount > 0),
-        mode      TEXT    NOT NULL DEFAULT 'Other',
-        bank      TEXT    NOT NULL
+        id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+        date                     TEXT    NOT NULL,
+        user_name                TEXT,
+        amount                   REAL    NOT NULL CHECK(amount > 0),
+        mode                     TEXT    NOT NULL DEFAULT 'Other',
+        bank                     TEXT    NOT NULL,
+        sub_category             TEXT,
+        buy_amount               REAL,
+        profit_amount            REAL,
+        is_investment_redemption INTEGER NOT NULL DEFAULT 0
       )
     ''');
 
@@ -817,7 +833,7 @@ class DatabaseHelper {
   // (Replicates Excel Investments sheet)
   // ═══════════════════════════════════════════════════════════════
 
-  /// Total invested (including initial investment holdings).
+  /// Total invested (including initial investment holdings, minus redeemed investments).
   Future<double> getTotalInvested({int? year, bool includeStartingBalance = true}) async {
     final db   = await database;
     final args = <dynamic>[];
@@ -833,14 +849,25 @@ class DatabaseHelper {
       args,
     );
     final expenseTotal = (result.first['total'] as num?)?.toDouble() ?? 0.0;
+
+    final redeemResult = await db.rawQuery(
+      "SELECT COALESCE(SUM(COALESCE(buy_amount, amount)), 0) as total "
+      "FROM ${AppConstants.tableExtraCredit} "
+      "WHERE is_investment_redemption = 1$extra",
+      args,
+    );
+    final redeemedTotal = (redeemResult.first['total'] as num?)?.toDouble() ?? 0.0;
+
     if (includeStartingBalance) {
       final initialTotal = await getTotalInitialInvestments();
-      return initialTotal + expenseTotal;
+      final total = initialTotal + expenseTotal - redeemedTotal;
+      return total > 0 ? total : 0.0;
     }
-    return expenseTotal;
+    final netExpense = (expenseTotal - redeemedTotal) > 0 ? (expenseTotal - redeemedTotal) : 0.0;
+    return netExpense;
   }
 
-  /// Asset allocation: per investment type totals (Starting Balance + Logged Expenses).
+  /// Asset allocation: per investment type totals (Starting Balance + Logged Expenses - Redeemed).
   Future<List<Map<String, dynamic>>> getInvestmentAllocation({
     int? year,
     bool includeStartingBalance = true,
@@ -862,8 +889,38 @@ class DatabaseHelper {
       args,
     );
 
+    final redeemRows = await db.rawQuery(
+      "SELECT sub_category, "
+      "  COALESCE(SUM(COALESCE(buy_amount, amount)), 0) as redeemed_total "
+      "FROM ${AppConstants.tableExtraCredit} "
+      "WHERE is_investment_redemption = 1$extra "
+      "GROUP BY sub_category",
+      args,
+    );
+    final Map<String, double> redeemedMap = {};
+    for (final r in redeemRows) {
+      final sub = (r['sub_category'] as String?)?.toLowerCase();
+      if (sub != null) {
+        redeemedMap[sub] = (r['redeemed_total'] as num).toDouble();
+      }
+    }
+
     if (!includeStartingBalance) {
-      final list = List<Map<String, dynamic>>.from(expenseRows);
+      final list = <Map<String, dynamic>>[];
+      for (final exp in expenseRows) {
+        final name = (exp['sub_category'] as String?) ?? 'Other Investment';
+        final total = (exp['total'] as num).toDouble();
+        final count = (exp['txn_count'] as int?) ?? 0;
+        final key = name.toLowerCase();
+        final net = total - (redeemedMap[key] ?? 0.0);
+        if (net > 0) {
+          list.add({
+            'sub_category': name,
+            'total': net,
+            'txn_count': count,
+          });
+        }
+      }
       list.sort((a, b) => (b['total'] as num).compareTo(a['total'] as num));
       return list;
     }
@@ -901,6 +958,13 @@ class DatabaseHelper {
       }
     }
 
+    for (final entry in redeemedMap.entries) {
+      if (combined.containsKey(entry.key)) {
+        final updated = (combined[entry.key]!['total'] as double) - entry.value;
+        combined[entry.key]!['total'] = updated > 0 ? updated : 0.0;
+      }
+    }
+
     final result = combined.values.where((item) => (item['total'] as double) > 0).toList();
     result.sort((a, b) => (b['total'] as num).compareTo(a['total'] as num));
     return result;
@@ -923,7 +987,7 @@ class DatabaseHelper {
     return (result.first['total'] as num?)?.toDouble() ?? 0.0;
   }
 
-  /// Live total value for a single investment instrument (Starting Balance + Expenses).
+  /// Live total value for a single investment instrument (Starting Balance + Expenses - Redeemed).
   Future<double> getLiveInvestmentHolding(String assetName) async {
     final db = await database;
     final assetRows = await db.query(
@@ -943,7 +1007,35 @@ class DatabaseHelper {
       [assetName.toLowerCase()],
     );
     final expenseTotal = (expenseRes.first['total'] as num?)?.toDouble() ?? 0.0;
-    return startBal + expenseTotal;
+
+    final redeemRes = await db.rawQuery(
+      "SELECT COALESCE(SUM(COALESCE(buy_amount, amount)), 0) as total "
+      "FROM ${AppConstants.tableExtraCredit} "
+      "WHERE is_investment_redemption = 1 AND LOWER(sub_category) = ?",
+      [assetName.toLowerCase()],
+    );
+    final redeemedTotal = (redeemRes.first['total'] as num?)?.toDouble() ?? 0.0;
+
+    final net = startBal + expenseTotal - redeemedTotal;
+    return net > 0 ? net : 0.0;
+  }
+
+  /// Total realized profit / capital gain from all investment redemptions.
+  Future<double> getTotalRealizedProfit({int? year}) async {
+    final db   = await database;
+    final args = <dynamic>[];
+    String extra = '';
+    if (year != null) {
+      extra = ' AND date >= ? AND date < ?';
+      args.addAll(['$year-01-01', '${year + 1}-01-01']);
+    }
+    final res = await db.rawQuery(
+      "SELECT COALESCE(SUM(profit_amount), 0) as total "
+      "FROM ${AppConstants.tableExtraCredit} "
+      "WHERE is_investment_redemption = 1$extra",
+      args,
+    );
+    return (res.first['total'] as num?)?.toDouble() ?? 0.0;
   }
 
   /// Insert a new initial investment asset.

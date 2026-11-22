@@ -46,6 +46,15 @@ class AppFormatters {
     return _indianCurrencyNoDecimal.format(amount);
   }
 
+  /// Format as Indian number without currency symbol: 1,50,000
+  static String number(double amount) {
+    if (amount.isNaN || amount.isInfinite) return '0';
+    if (amount == amount.roundToDouble()) {
+      return NumberFormat('#,##,##0', 'en_IN').format(amount);
+    }
+    return NumberFormat('#,##,###.##', 'en_IN').format(amount);
+  }
+
   /// Format with sign: +₹5,000 or -₹3,000
   static String currencyWithSign(double amount) {
     final sign = amount >= 0 ? '+' : '';

@@ -71,6 +71,15 @@ class UnifiedTransaction {
   }
 
   factory UnifiedTransaction.fromIncome(ExtraCredit i) {
+    String title = i.mode;
+    String? subtitle = i.userName;
+    if (i.isInvestmentRedemption) {
+      title = i.subCategory != null ? '${i.subCategory} Sale' : 'Investment Sale';
+      final buy = i.buyAmount ?? 0.0;
+      final profit = i.profitAmount ?? (i.amount - buy);
+      final pStr = profit >= 0 ? '+₹${AppFormatters.number(profit)}' : '-₹${AppFormatters.number(-profit)}';
+      subtitle = 'Buy: ₹${AppFormatters.number(buy)} • Profit: $pStr';
+    }
     return UnifiedTransaction(
       kind: TransactionKind.income,
       id: i.id,
@@ -78,9 +87,9 @@ class UnifiedTransaction {
       dateTime: AppFormatters.parseDbDate(i.date),
       amount: i.amount,
       bank: i.bank,
-      title: i.mode,
-      subtitle: i.userName,
-      category: i.mode,
+      title: title,
+      subtitle: subtitle,
+      category: i.subCategory ?? i.mode,
       originalIncome: i,
     );
   }
@@ -298,13 +307,17 @@ class TransactionFilter {
     final dt = AppFormatters.parseDbDate(i.date);
     if (!matchesDate(dt)) return false;
     if (bank != null && i.bank.toLowerCase() != bank!.toLowerCase()) return false;
-    if (category != null && i.mode.toLowerCase() != category!.toLowerCase()) return false;
+    if (category != null) {
+      final matchesMode = i.mode.toLowerCase() == category!.toLowerCase();
+      final matchesSub = i.subCategory != null && i.subCategory!.toLowerCase() == category!.toLowerCase();
+      if (!matchesMode && !matchesSub) return false;
+    }
     if (!matchesAmount(i.amount)) return false;
 
     if (searchQuery.trim().isNotEmpty) {
       if (!_matchesQuery(
         searchQuery,
-        textFields: [i.mode, i.userName, i.bank],
+        textFields: [i.mode, i.userName, i.bank, i.subCategory],
         amount: i.amount,
       )) {
         return false;

@@ -38,7 +38,7 @@ class _StatementCategorizationScreenState
     _transactions = widget.approvedTransactions;
 
     // Default target bank
-    final availableBanks = AppConstants.defaultBanks;
+    const availableBanks = AppConstants.defaultBanks;
     final match = availableBanks.firstWhere(
       (b) => widget.selectedBank.toLowerCase().contains(b.toLowerCase()) ||
           b.toLowerCase().contains(widget.selectedBank.toLowerCase()),
