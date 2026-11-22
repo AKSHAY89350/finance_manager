@@ -34,7 +34,9 @@ class _StatementImportScreenState extends State<StatementImportScreen> {
 
   @override
   void dispose() {
+    _passwordController.clear();
     _passwordController.dispose();
+    _fileBytes = null;
     super.dispose();
   }
 
@@ -115,6 +117,7 @@ class _StatementImportScreenState extends State<StatementImportScreen> {
 
       if (!mounted) return;
       setState(() => _isProcessing = false);
+      _passwordController.clear(); // Security: Zero out sensitive password from memory
 
       // 3. Navigate to Review Screen
       final resolvedBank = (_selectedBank == 'Auto-Detect' && rawTransactions.isNotEmpty)

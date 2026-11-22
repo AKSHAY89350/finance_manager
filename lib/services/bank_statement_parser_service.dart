@@ -102,6 +102,12 @@ class BankStatementParserService {
         continue;
       }
 
+      // Security Guard: Discard abnormally oversized lines (>2000 chars) to prevent ReDoS / CPU spike
+      if (line.length > 2000) {
+        i++;
+        continue;
+      }
+
       final lower = line.toLowerCase();
       if (_isHeaderLine(lower)) {
         i++;
