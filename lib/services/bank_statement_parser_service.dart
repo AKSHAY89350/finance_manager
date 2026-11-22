@@ -286,6 +286,7 @@ class BankStatementParserService {
       selectedSubCategory: suggestion.subCategory,
       selectedBucket: suggestion.bucket,
       targetAccount: bankName,
+      isTransfer: suggestion.isTransfer,
     );
   }
 

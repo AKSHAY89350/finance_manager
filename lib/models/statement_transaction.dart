@@ -22,8 +22,12 @@ class StatementTransaction {
   // Categorization decisions
   String selectedCategory;
   String? selectedSubCategory;
-  String selectedBucket; // 'Needs' | 'Wants' | 'Savings' | 'Income'
+  String selectedBucket; // 'Needs' | 'Wants' | 'Savings' | 'Income' | 'Transfer'
   String targetAccount;
+
+  // Internal Transfer state
+  bool isTransfer;
+  String? transferOtherBank;
 
   StatementTransaction({
     String? id,
@@ -42,9 +46,11 @@ class StatementTransaction {
     this.selectedSubCategory,
     String? selectedBucket,
     String? targetAccount,
+    this.isTransfer = false,
+    this.transferOtherBank,
   })  : id = id ?? const Uuid().v4(),
         isApproved = isApproved ?? (!isDuplicate),
-        selectedBucket = selectedBucket ?? (isCredit ? 'Income' : 'Needs'),
+        selectedBucket = selectedBucket ?? (isTransfer ? 'Transfer' : (isCredit ? 'Income' : 'Needs')),
         targetAccount = targetAccount ?? bankName;
 
   /// Human-readable date formatted as DD/MM/YYYY
@@ -80,6 +86,8 @@ class StatementTransaction {
     String? selectedSubCategory,
     String? selectedBucket,
     String? targetAccount,
+    bool? isTransfer,
+    String? transferOtherBank,
   }) {
     return StatementTransaction(
       id: id ?? this.id,
@@ -98,6 +106,8 @@ class StatementTransaction {
       selectedSubCategory: selectedSubCategory ?? this.selectedSubCategory,
       selectedBucket: selectedBucket ?? this.selectedBucket,
       targetAccount: targetAccount ?? this.targetAccount,
+      isTransfer: isTransfer ?? this.isTransfer,
+      transferOtherBank: transferOtherBank ?? this.transferOtherBank,
     );
   }
 }

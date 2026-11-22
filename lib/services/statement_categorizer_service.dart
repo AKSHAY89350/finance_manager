@@ -63,6 +63,24 @@ class StatementCategorizerService {
   static CategorizationSuggestion suggest(String narration, bool isCredit) {
     final lower = narration.toLowerCase();
 
+    // 0. Self / Internal Account Transfers (applies to both credits and debits)
+    if (lower.contains('self transfer') ||
+        lower.contains('trf to self') ||
+        lower.contains('trf from self') ||
+        lower.contains('own a/c') ||
+        lower.contains('own account') ||
+        lower.contains('internal transfer') ||
+        lower.contains('self a/c') ||
+        lower.contains('transfer to own') ||
+        lower.contains('funds transfer to own')) {
+      return const CategorizationSuggestion(
+        category: 'Internal Transfer',
+        subCategory: 'Self Transfer',
+        bucket: 'Transfer',
+        isTransfer: true,
+      );
+    }
+
     if (isCredit) {
       if (lower.contains('salary') ||
           lower.contains('payroll') ||
@@ -269,16 +287,26 @@ class StatementCategorizerService {
       bucket: 'Needs',
     );
   }
+
+  /// Maps a chosen category to its 50-30-20 budget bucket
+  static String mapCategoryTo503020(String category) {
+    if (category == 'Internal Transfer') return 'Transfer';
+    if (category == 'SIP & Investments') return 'Savings';
+    if (['Shopping', 'Entertainment'].contains(category)) return 'Wants';
+    return 'Needs';
+  }
 }
 
 class CategorizationSuggestion {
   final String category;
   final String subCategory;
-  final String bucket; // 'Needs' | 'Wants' | 'Savings' | 'Income'
+  final String bucket; // 'Needs' | 'Wants' | 'Savings' | 'Income' | 'Transfer'
+  final bool isTransfer;
 
   const CategorizationSuggestion({
     required this.category,
     required this.subCategory,
     required this.bucket,
+    this.isTransfer = false,
   });
 }

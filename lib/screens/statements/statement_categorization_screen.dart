@@ -4,8 +4,10 @@ import '../../models/statement_transaction.dart';
 import '../../db/database_helper.dart';
 import '../../providers/expense_provider.dart';
 import '../../providers/income_provider.dart';
+import '../../providers/transfer_provider.dart';
 import '../../providers/bank_provider.dart';
 import '../../providers/financial_health_provider.dart';
+import '../../utils/app_colors.dart';
 import '../../utils/constants.dart';
 import '../../utils/formatters.dart';
 
@@ -52,8 +54,10 @@ class _StatementCategorizationScreenState
 
     int expensesAdded = 0;
     int incomeAdded = 0;
+    int transfersAdded = 0;
     double totalDebitAmt = 0;
     double totalCreditAmt = 0;
+    double totalTransferAmt = 0;
 
     final db = DatabaseHelper.instance;
 
@@ -63,7 +67,28 @@ class _StatementCategorizationScreenState
       // Execute all inserts atomically within a single SQLite transaction
       await database.transaction((txnDb) async {
         for (final txn in _transactions) {
-          if (txn.isCredit) {
+          if (txn.isTransfer) {
+            // Internal Transfer between user's own accounts
+            final otherBank = txn.transferOtherBank ?? 'Cash';
+            final fromBank = txn.isCredit ? otherBank : _targetBank;
+            final toBank = txn.isCredit ? _targetBank : otherBank;
+
+            await txnDb.insert(
+              AppConstants.tableTransfers,
+              {
+                'date': txn.isoDate,
+                'from_bank': fromBank,
+                'to_bank': toBank,
+                'amount': txn.amount,
+                'description': txn.cleanDescription.isNotEmpty
+                    ? txn.cleanDescription
+                    : 'Self Transfer ($fromBank ➔ $toBank)',
+              },
+            );
+
+            transfersAdded++;
+            totalTransferAmt += txn.amount;
+          } else if (txn.isCredit) {
             // Income entry
             String mode = 'Salary';
             if (AppConstants.incomeModes.contains(txn.selectedSubCategory)) {
@@ -111,6 +136,7 @@ class _StatementCategorizationScreenState
       // Refresh Riverpod state
       ref.invalidate(expenseProvider);
       ref.invalidate(incomeProvider);
+      ref.invalidate(transferProvider);
       ref.invalidate(bankProvider);
       ref.invalidate(financialHealthProvider);
       ref.invalidate(currentHealthReportProvider);
@@ -119,7 +145,14 @@ class _StatementCategorizationScreenState
       setState(() => _isCommitting = false);
 
       // Show Success Dialog
-      _showSuccessDialog(expensesAdded, incomeAdded, totalDebitAmt, totalCreditAmt);
+      _showSuccessDialog(
+        expensesAdded,
+        incomeAdded,
+        transfersAdded,
+        totalDebitAmt,
+        totalCreditAmt,
+        totalTransferAmt,
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _isCommitting = false);
@@ -130,7 +163,13 @@ class _StatementCategorizationScreenState
   }
 
   void _showSuccessDialog(
-      int expCount, int incCount, double debitAmt, double creditAmt) {
+    int expCount,
+    int incCount,
+    int transferCount,
+    double debitAmt,
+    double creditAmt,
+    double transferAmt,
+  ) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -161,33 +200,49 @@ class _StatementCategorizationScreenState
                 ),
                 child: Column(
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Expenses Recorded ($expCount):', style: const TextStyle(fontSize: 12)),
-                        Text(
-                          AppFormatters.currency(debitAmt),
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Income Records Added ($incCount):', style: const TextStyle(fontSize: 12)),
-                        Text(
-                          AppFormatters.currency(creditAmt),
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green),
-                        ),
-                      ],
-                    ),
+                    if (expCount > 0)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Expenses Recorded ($expCount):', style: const TextStyle(fontSize: 12)),
+                          Text(
+                            AppFormatters.currency(debitAmt),
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red),
+                          ),
+                        ],
+                      ),
+                    if (incCount > 0) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Income Records Added ($incCount):', style: const TextStyle(fontSize: 12)),
+                          Text(
+                            AppFormatters.currency(creditAmt),
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green),
+                          ),
+                        ],
+                      ),
+                    ],
+                    if (transferCount > 0) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Internal Transfers ($transferCount):', style: const TextStyle(fontSize: 12)),
+                          Text(
+                            AppFormatters.currency(transferAmt),
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.transfer),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
               const SizedBox(height: 12),
               const Text(
-                'Your Expenses tab, Transaction History, and 50-30-20 Gauge Meter have been automatically updated.',
+                'Internal transfers adjust individual account balances without changing your total income or expenses.',
                 style: TextStyle(fontSize: 11, color: Colors.grey),
               ),
             ],
@@ -313,7 +368,7 @@ class _StatementCategorizationScreenState
               padding: const EdgeInsets.only(left: 12, right: 12, bottom: 90),
               itemBuilder: (context, index) {
                 final txn = _transactions[index];
-                return _buildCategorizationCard(txn, categories, theme, isDark);
+                return _buildCategorizationCard(txn, categories, availableBanks, theme, isDark);
               },
             ),
           ),
@@ -375,10 +430,22 @@ class _StatementCategorizationScreenState
   Widget _buildCategorizationCard(
     StatementTransaction txn,
     List<String> categories,
+    List<String> availableBanks,
     ThemeData theme,
     bool isDark,
   ) {
     final isCredit = txn.isCredit;
+
+    // Accounts available for self transfer (excluding the statement bank itself)
+    final otherBanks = availableBanks.where((b) => b != _targetBank).toList();
+    if (otherBanks.isEmpty) {
+      otherBanks.addAll(['Cash', 'Other Bank']);
+    }
+    if (txn.transferOtherBank == null || !otherBanks.contains(txn.transferOtherBank)) {
+      txn.transferOtherBank = otherBanks.first;
+    }
+
+    final allCategories = ['Internal Transfer', ...categories];
     final subCategories = AppConstants.categorySubMap[txn.selectedCategory] ?? ['Other'];
 
     return Card(
@@ -386,14 +453,19 @@ class _StatementCategorizationScreenState
       margin: const EdgeInsets.symmetric(vertical: 5),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: isDark ? Colors.grey.shade800 : Colors.grey.shade300),
+        side: BorderSide(
+          color: txn.isTransfer
+              ? AppColors.transfer
+              : (isDark ? Colors.grey.shade800 : Colors.grey.shade300),
+          width: txn.isTransfer ? 1.5 : 1.0,
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Top Row: Description & Amount
+            // Top Row: Description, Self-Transfer Quick Toggle, & Amount
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -401,9 +473,67 @@ class _StatementCategorizationScreenState
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        txn.cleanDescription,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              txn.cleanDescription,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          // Quick Self-Transfer Toggle Chip
+                          InkWell(
+                            onTap: () {
+                              setState(() {
+                                txn.isTransfer = !txn.isTransfer;
+                                if (txn.isTransfer) {
+                                  txn.selectedCategory = 'Internal Transfer';
+                                  txn.selectedBucket = 'Transfer';
+                                  txn.transferOtherBank ??= otherBanks.first;
+                                } else {
+                                  txn.selectedCategory = 'Other';
+                                  txn.selectedSubCategory = 'Other';
+                                  txn.selectedBucket = isCredit ? 'Income' : 'Needs';
+                                }
+                              });
+                            },
+                            borderRadius: BorderRadius.circular(6),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                              decoration: BoxDecoration(
+                                color: txn.isTransfer
+                                    ? AppColors.transfer.withValues(alpha: 0.18)
+                                    : (isDark ? Colors.grey.shade800 : Colors.grey.shade200),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: txn.isTransfer ? AppColors.transfer : Colors.transparent,
+                                  width: 1,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.swap_horiz_rounded,
+                                    size: 13,
+                                    color: txn.isTransfer ? AppColors.transfer : Colors.grey.shade600,
+                                  ),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    'Self Transfer',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: txn.isTransfer ? FontWeight.bold : FontWeight.w500,
+                                      color: txn.isTransfer ? AppColors.transfer : Colors.grey.shade700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       Text(
                         '${txn.formattedDate} • ${txn.narration}',
@@ -414,19 +544,24 @@ class _StatementCategorizationScreenState
                     ],
                   ),
                 ),
+                const SizedBox(width: 8),
                 Text(
-                  '${isCredit ? "+" : "-"} ${AppFormatters.currency(txn.amount)}',
+                  txn.isTransfer
+                      ? '🔄 ${AppFormatters.currency(txn.amount)}'
+                      : '${isCredit ? "+" : "-"} ${AppFormatters.currency(txn.amount)}',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
-                    color: isCredit ? Colors.green : Colors.red,
+                    color: txn.isTransfer
+                        ? AppColors.transfer
+                        : (isCredit ? Colors.green : Colors.red),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 10),
 
-            // Dropdowns Row
+            // Dropdowns Row: Category Dropdown & (Sub-Category OR Other Account Dropdown)
             Row(
               children: [
                 // Category Dropdown
@@ -437,19 +572,34 @@ class _StatementCategorizationScreenState
                     decoration: BoxDecoration(
                       color: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.grey.shade400, width: 0.8),
+                      border: Border.all(
+                        color: txn.isTransfer ? AppColors.transfer : Colors.grey.shade400,
+                        width: txn.isTransfer ? 1.2 : 0.8,
+                      ),
                     ),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<String>(
                         isExpanded: true,
-                        value: categories.contains(txn.selectedCategory) ? txn.selectedCategory : 'Other',
-                        items: categories.map((cat) {
-                          final icon = AppConstants.categoryIcons[cat] ?? '🔹';
+                        value: allCategories.contains(txn.selectedCategory)
+                            ? txn.selectedCategory
+                            : (txn.isTransfer ? 'Internal Transfer' : 'Other'),
+                        items: allCategories.map((cat) {
+                          final icon = cat == 'Internal Transfer'
+                              ? '🔄'
+                              : (AppConstants.categoryIcons[cat] ?? '🔹');
                           return DropdownMenuItem<String>(
                             value: cat,
                             child: Text(
                               '$icon $cat',
-                              style: const TextStyle(fontSize: 12),
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: cat == 'Internal Transfer'
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                                color: cat == 'Internal Transfer'
+                                    ? AppColors.transfer
+                                    : null,
+                              ),
                               overflow: TextOverflow.ellipsis,
                             ),
                           );
@@ -458,18 +608,24 @@ class _StatementCategorizationScreenState
                           if (newCat != null) {
                             setState(() {
                               txn.selectedCategory = newCat;
-                              final newSubs = AppConstants.categorySubMap[newCat];
-                              txn.selectedSubCategory = (newSubs != null && newSubs.isNotEmpty) ? newSubs.first : 'Other';
-
-                              // Update 50-30-20 bucket automatically based on category
-                              if (isCredit) {
-                                txn.selectedBucket = 'Income';
-                              } else if (newCat == 'SIP & Investments') {
-                                txn.selectedBucket = 'Savings';
-                              } else if (['Shopping', 'Entertainment'].contains(newCat)) {
-                                txn.selectedBucket = 'Wants';
+                              if (newCat == 'Internal Transfer') {
+                                txn.isTransfer = true;
+                                txn.selectedBucket = 'Transfer';
+                                txn.transferOtherBank ??= otherBanks.first;
                               } else {
-                                txn.selectedBucket = 'Needs';
+                                txn.isTransfer = false;
+                                final newSubs = AppConstants.categorySubMap[newCat];
+                                txn.selectedSubCategory =
+                                    (newSubs != null && newSubs.isNotEmpty) ? newSubs.first : 'Other';
+                                if (isCredit) {
+                                  txn.selectedBucket = 'Income';
+                                } else if (newCat == 'SIP & Investments') {
+                                  txn.selectedBucket = 'Savings';
+                                } else if (['Shopping', 'Entertainment'].contains(newCat)) {
+                                  txn.selectedBucket = 'Wants';
+                                } else {
+                                  txn.selectedBucket = 'Needs';
+                                }
                               }
                             });
                           }
@@ -480,7 +636,7 @@ class _StatementCategorizationScreenState
                 ),
                 const SizedBox(width: 8),
 
-                // Sub-Category Dropdown
+                // Right Dropdown: Other Account (if Transfer) OR Sub-Category (if Regular)
                 Expanded(
                   flex: 3,
                   child: Container(
@@ -488,30 +644,72 @@ class _StatementCategorizationScreenState
                     decoration: BoxDecoration(
                       color: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.grey.shade400, width: 0.8),
+                      border: Border.all(
+                        color: txn.isTransfer ? AppColors.transfer : Colors.grey.shade400,
+                        width: txn.isTransfer ? 1.2 : 0.8,
+                      ),
                     ),
                     child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        isExpanded: true,
-                        value: subCategories.contains(txn.selectedSubCategory)
-                            ? txn.selectedSubCategory
-                            : subCategories.first,
-                        items: subCategories.map((sub) {
-                          return DropdownMenuItem<String>(
-                            value: sub,
-                            child: Text(
-                              sub,
-                              style: const TextStyle(fontSize: 12),
-                              overflow: TextOverflow.ellipsis,
+                      child: txn.isTransfer
+                          ? DropdownButton<String>(
+                              isExpanded: true,
+                              value: otherBanks.contains(txn.transferOtherBank)
+                                  ? txn.transferOtherBank
+                                  : otherBanks.first,
+                              items: otherBanks.map((b) {
+                                return DropdownMenuItem<String>(
+                                  value: b,
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        isCredit
+                                            ? Icons.call_received_rounded
+                                            : Icons.call_made_rounded,
+                                        size: 13,
+                                        color: AppColors.transfer,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Expanded(
+                                        child: Text(
+                                          '${isCredit ? "From" : "To"}: $b',
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (newBank) {
+                                if (newBank != null) {
+                                  setState(() => txn.transferOtherBank = newBank);
+                                }
+                              },
+                            )
+                          : DropdownButton<String>(
+                              isExpanded: true,
+                              value: subCategories.contains(txn.selectedSubCategory)
+                                  ? txn.selectedSubCategory
+                                  : subCategories.first,
+                              items: subCategories.map((sub) {
+                                return DropdownMenuItem<String>(
+                                  value: sub,
+                                  child: Text(
+                                    sub,
+                                    style: const TextStyle(fontSize: 12),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (newSub) {
+                                if (newSub != null) {
+                                  setState(() => txn.selectedSubCategory = newSub);
+                                }
+                              },
                             ),
-                          );
-                        }).toList(),
-                        onChanged: (newSub) {
-                          if (newSub != null) {
-                            setState(() => txn.selectedSubCategory = newSub);
-                          }
-                        },
-                      ),
                     ),
                   ),
                 ),
@@ -519,32 +717,75 @@ class _StatementCategorizationScreenState
             ),
             const SizedBox(height: 6),
 
-            // 50-30-20 Bucket Pill
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: _getBucketColor(txn.selectedBucket).withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: _getBucketColor(txn.selectedBucket), width: 1),
-                  ),
-                  child: Text(
-                    txn.selectedBucket,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: _getBucketColor(txn.selectedBucket),
+            // Bottom Status Pill: Self-Transfer vs 50-30-20 Bucket
+            if (txn.isTransfer)
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppColors.transfer.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.transfer, width: 1),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.swap_horiz_rounded, size: 12, color: AppColors.transfer),
+                        SizedBox(width: 4),
+                        Text(
+                          'Self Transfer',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.transfer,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '• Status: Ready to commit',
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                ),
-              ],
-            ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      isCredit
+                          ? '${txn.transferOtherBank ?? "Other"} ➔ $_targetBank (Neutral • Money stayed with you)'
+                          : '$_targetBank ➔ ${txn.transferOtherBank ?? "Other"} (Neutral • Money stayed with you)',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isDark ? Colors.amber.shade300 : Colors.amber.shade900,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              )
+            else
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: _getBucketColor(txn.selectedBucket).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: _getBucketColor(txn.selectedBucket), width: 1),
+                    ),
+                    child: Text(
+                      txn.selectedBucket,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: _getBucketColor(txn.selectedBucket),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '• Status: Ready to commit',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
           ],
         ),
       ),
@@ -559,6 +800,8 @@ class _StatementCategorizationScreenState
         return Colors.orange.shade700;
       case 'Savings':
         return Colors.purple.shade600;
+      case 'Transfer':
+        return AppColors.transfer;
       case 'Income':
       default:
         return Colors.green.shade600;
