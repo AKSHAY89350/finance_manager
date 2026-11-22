@@ -25,6 +25,13 @@ class IncomeNotifier extends StateNotifier<AsyncValue<List<ExtraCredit>>> {
     await loadIncome();
   }
 
+  Future<void> updateIncome(ExtraCredit income) async {
+    if (income.id != null) {
+      await DatabaseHelper.instance.updateIncome(income.id!, income.toMap());
+      await loadIncome();
+    }
+  }
+
   Future<void> deleteIncome(int id) async {
     await DatabaseHelper.instance.deleteIncome(id);
     await loadIncome();

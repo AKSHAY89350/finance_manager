@@ -8,7 +8,9 @@ import '../../utils/constants.dart';
 import '../../utils/formatters.dart';
 
 class AddIncomeScreen extends ConsumerStatefulWidget {
-  const AddIncomeScreen({super.key});
+  final ExtraCredit? initialIncome;
+
+  const AddIncomeScreen({super.key, this.initialIncome});
 
   @override
   ConsumerState<AddIncomeScreen> createState() => _AddIncomeScreenState();
@@ -17,12 +19,29 @@ class AddIncomeScreen extends ConsumerStatefulWidget {
 class _AddIncomeScreenState extends ConsumerState<AddIncomeScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  DateTime _selectedDate = DateTime.now();
-  String _selectedMode = AppConstants.incomeModes.first;
-  String _selectedBank = AppConstants.defaultBanks.first;
+  late DateTime _selectedDate;
+  late String _selectedMode;
+  late String _selectedBank;
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _sourceController = TextEditingController();
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialIncome != null) {
+      final inc = widget.initialIncome!;
+      _selectedDate = AppFormatters.parseDbDate(inc.date);
+      _selectedMode = inc.mode;
+      _selectedBank = inc.bank;
+      _amountController.text = inc.amount.toString();
+      _sourceController.text = inc.userName ?? '';
+    } else {
+      _selectedDate = DateTime.now();
+      _selectedMode = AppConstants.incomeModes.first;
+      _selectedBank = AppConstants.defaultBanks.first;
+    }
+  }
 
   @override
   void dispose() {
@@ -57,6 +76,7 @@ class _AddIncomeScreenState extends ConsumerState<AddIncomeScreen> {
     setState(() => _isLoading = true);
 
     final income = ExtraCredit(
+      id: widget.initialIncome?.id,
       date: AppFormatters.dbDate(_selectedDate),
       userName: _sourceController.text.trim().isEmpty ? null : _sourceController.text.trim(),
       amount: amount,
@@ -64,12 +84,16 @@ class _AddIncomeScreenState extends ConsumerState<AddIncomeScreen> {
       bank: _selectedBank,
     );
 
-    await ref.read(incomeProvider.notifier).addIncome(income);
+    if (widget.initialIncome == null) {
+      await ref.read(incomeProvider.notifier).addIncome(income);
+    } else {
+      await ref.read(incomeProvider.notifier).updateIncome(income);
+    }
     await ref.read(bankProvider.notifier).loadBanks();
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Income credited successfully!')),
+        SnackBar(content: Text(widget.initialIncome == null ? 'Income credited successfully!' : 'Income updated successfully!')),
       );
       Navigator.pop(context);
     }
@@ -88,7 +112,7 @@ class _AddIncomeScreenState extends ConsumerState<AddIncomeScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Add Income / Credit')),
+      appBar: AppBar(title: Text(widget.initialIncome == null ? 'Add Income / Credit' : 'Edit Income / Credit')),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
@@ -178,9 +202,9 @@ class _AddIncomeScreenState extends ConsumerState<AddIncomeScreen> {
                         backgroundColor: AppColors.income,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
-                      child: const Text(
-                        'Save Income',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      child: Text(
+                        widget.initialIncome == null ? 'Save Income' : 'Update Income',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ],

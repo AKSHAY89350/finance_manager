@@ -14,6 +14,7 @@ import '../../utils/app_colors.dart';
 import '../../utils/constants.dart';
 import '../../utils/formatters.dart';
 import '../expense/add_expense_screen.dart';
+import '../income/add_income_screen.dart';
 import 'review_inbox_screen.dart';
 
 class TransactionListScreen extends ConsumerStatefulWidget {
@@ -472,6 +473,13 @@ class _TransactionListScreenState extends ConsumerState<TransactionListScreen>
                       builder: (_) => AddExpenseScreen(initialExpense: item.originalExpense),
                     ),
                   );
+                } else if (item.kind == TransactionKind.income && item.originalIncome != null) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => AddIncomeScreen(initialIncome: item.originalIncome),
+                    ),
+                  );
                 }
               },
               leading: _buildLeadingAvatar(item),
@@ -703,6 +711,14 @@ class _TransactionListScreenState extends ConsumerState<TransactionListScreen>
           },
           child: Card(
             child: ListTile(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => AddIncomeScreen(initialIncome: income),
+                  ),
+                );
+              },
               leading: CircleAvatar(
                 backgroundColor: AppColors.income.withValues(alpha: 0.15),
                 child: const Icon(Icons.arrow_upward_rounded, color: AppColors.income),
