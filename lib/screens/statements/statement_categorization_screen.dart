@@ -36,10 +36,13 @@ class _StatementCategorizationScreenState
     _transactions = widget.approvedTransactions;
 
     // Default target bank
-    const availableBanks = AppConstants.defaultBanks;
+    final availableBanks = AppConstants.defaultBanks;
     final match = availableBanks.firstWhere(
-      (b) => widget.selectedBank.toLowerCase().contains(b.toLowerCase()),
-      orElse: () => availableBanks.first,
+      (b) => widget.selectedBank.toLowerCase().contains(b.toLowerCase()) ||
+          b.toLowerCase().contains(widget.selectedBank.toLowerCase()),
+      orElse: () => widget.selectedBank.isNotEmpty && widget.selectedBank != 'Auto-Detect'
+          ? widget.selectedBank
+          : availableBanks.first,
     );
     _targetBank = match;
   }
@@ -55,44 +58,55 @@ class _StatementCategorizationScreenState
     final db = DatabaseHelper.instance;
 
     try {
-      for (final txn in _transactions) {
-        if (txn.isCredit) {
-          // Income entry
-          String mode = 'Salary';
-          if (AppConstants.incomeModes.contains(txn.selectedSubCategory)) {
-            mode = txn.selectedSubCategory!;
-          } else if (txn.selectedCategory == 'Income' &&
-              txn.selectedSubCategory != null) {
-            mode = txn.selectedSubCategory!;
+      final database = await db.database;
+
+      // Execute all inserts atomically within a single SQLite transaction
+      await database.transaction((txnDb) async {
+        for (final txn in _transactions) {
+          if (txn.isCredit) {
+            // Income entry
+            String mode = 'Salary';
+            if (AppConstants.incomeModes.contains(txn.selectedSubCategory)) {
+              mode = txn.selectedSubCategory!;
+            } else if (txn.selectedCategory == 'Income' &&
+                txn.selectedSubCategory != null) {
+              mode = txn.selectedSubCategory!;
+            } else {
+              mode = 'Other';
+            }
+
+            await txnDb.insert(
+              AppConstants.tableExtraCredit,
+              {
+                'date': txn.isoDate,
+                'user_name': txn.cleanDescription,
+                'amount': txn.amount,
+                'mode': mode,
+                'bank': _targetBank,
+              },
+            );
+
+            incomeAdded++;
+            totalCreditAmt += txn.amount;
           } else {
-            mode = 'Other';
+            // Expense entry
+            await txnDb.insert(
+              AppConstants.tableExpenses,
+              {
+                'date': txn.isoDate,
+                'category': txn.selectedCategory,
+                'sub_category': txn.selectedSubCategory,
+                'description': txn.cleanDescription,
+                'amount': txn.amount,
+                'bank': _targetBank,
+              },
+            );
+
+            expensesAdded++;
+            totalDebitAmt += txn.amount;
           }
-
-          await db.insertIncome({
-            'date': txn.isoDate,
-            'user_name': txn.cleanDescription,
-            'amount': txn.amount,
-            'mode': mode,
-            'bank': _targetBank,
-          });
-
-          incomeAdded++;
-          totalCreditAmt += txn.amount;
-        } else {
-          // Expense entry
-          await db.insertExpense({
-            'date': txn.isoDate,
-            'category': txn.selectedCategory,
-            'sub_category': txn.selectedSubCategory,
-            'description': txn.cleanDescription,
-            'amount': txn.amount,
-            'bank': _targetBank,
-          });
-
-          expensesAdded++;
-          totalDebitAmt += txn.amount;
         }
-      }
+      });
 
       // Refresh Riverpod state
       ref.invalidate(expenseProvider);
@@ -204,7 +218,17 @@ class _StatementCategorizationScreenState
     final isDark = theme.brightness == Brightness.dark;
 
     final categories = AppConstants.categories;
-    const availableBanks = AppConstants.defaultBanks;
+
+    // Dynamically retrieve all registered bank accounts plus defaults
+    final bankListState = ref.watch(bankProvider);
+    final Set<String> allBanks = Set.from(AppConstants.defaultBanks);
+    if (bankListState.hasValue && bankListState.value != null) {
+      for (final b in bankListState.value!) {
+        allBanks.add(b.bank.name);
+      }
+    }
+    allBanks.add(_targetBank);
+    final availableBanks = allBanks.toList();
 
     return Scaffold(
       appBar: AppBar(

@@ -70,6 +70,19 @@ class BankStatementParserService {
     return 'Bank Statement';
   }
 
+  /// Detects whether a line is a header, disclaimer, or pagination artifact
+  static bool _isHeaderLine(String lower) {
+    return lower.contains('transaction date') ||
+        lower.contains('narration') ||
+        lower.contains('withdrawal amt') ||
+        lower.contains('deposit amt') ||
+        lower.contains('account number') ||
+        lower.contains('page ') ||
+        lower.contains('statement summary') ||
+        lower.contains('opening balance') ||
+        lower.contains('closing balance');
+  }
+
   /// Parses extracted raw text into structured statement transactions
   static List<StatementTransaction> _parseTextToTransactions(String text, String bankName) {
     final lines = text.split(RegExp(r'\r?\n'));
@@ -81,19 +94,17 @@ class BankStatementParserService {
     // 2. DD MMM YYYY or DD-MMM-YY (e.g. 15 Oct 2026 or 15-OCT-26)
     final dateAlphaRegex = RegExp(r'^\s*(\d{1,2}[\s\/\-][A-Za-z]{3}[\s\/\-]\d{2,4})');
 
-    for (int i = 0; i < lines.length; i++) {
+    int i = 0;
+    while (i < lines.length) {
       final line = lines[i].trim();
-      if (line.isEmpty) continue;
+      if (line.isEmpty) {
+        i++;
+        continue;
+      }
 
-      // Filter out typical header rows
       final lower = line.toLowerCase();
-      if (lower.contains('transaction date') ||
-          lower.contains('narration') ||
-          lower.contains('withdrawal amt') ||
-          lower.contains('deposit amt') ||
-          lower.contains('account number') ||
-          lower.contains('page ') ||
-          lower.contains('statement summary')) {
+      if (_isHeaderLine(lower)) {
+        i++;
         continue;
       }
 
@@ -112,16 +123,46 @@ class BankStatementParserService {
         remaining = line.substring(matchNum.end).trim();
       }
 
-      if (dateStr == null) continue;
+      if (dateStr == null) {
+        i++;
+        continue;
+      }
 
       final parsedDate = _parseStatementDate(dateStr);
-      if (parsedDate == null) continue;
+      if (parsedDate == null) {
+        i++;
+        continue;
+      }
+
+      // Lookahead: buffer multi-line transaction rows where narration or amounts wrap
+      String aggregatedLine = remaining;
+      int nextIdx = i + 1;
+      while (nextIdx < lines.length) {
+        final nextTrimmed = lines[nextIdx].trim();
+        if (nextTrimmed.isEmpty) {
+          nextIdx++;
+          continue;
+        }
+        if (_isHeaderLine(nextTrimmed.toLowerCase())) {
+          nextIdx++;
+          continue;
+        }
+        // If next line starts with a date, it marks the start of a subsequent transaction
+        if (dateAlphaRegex.hasMatch(nextTrimmed) || dateNumRegex.hasMatch(nextTrimmed)) {
+          break;
+        }
+        aggregatedLine += ' $nextTrimmed';
+        i = nextIdx;
+        nextIdx++;
+      }
 
       // Parse amounts from the line
-      final txn = _parseLineToTransaction(parsedDate, remaining, bankName);
+      final txn = _parseLineToTransaction(parsedDate, aggregatedLine, bankName);
       if (txn != null) {
         results.add(txn);
       }
+
+      i++;
     }
 
     return results;
@@ -131,9 +172,9 @@ class BankStatementParserService {
   static StatementTransaction? _parseLineToTransaction(DateTime date, String line, String bankName) {
     if (line.trim().isEmpty) return null;
 
-    // Currency amount regex with comma separators
-    // e.g. 1,250.00 or 500.50 or 75000
-    final amtRegex = RegExp(r'(\d{1,3}(?:,\d{2,3})*(?:\.\d{1,2})|\d+\.\d{2})');
+    // Currency amount regex with comma separators and optional currency symbols
+    // e.g. 1,250.00 or 5,000 or 500.50 or 75000.00
+    final amtRegex = RegExp(r'(?:₹|Rs\.?\s*)?(\d{1,3}(?:,\d{2,3})*(?:\.\d{1,2})|\d{1,3}(?:,\d{2,3})+|\d+\.\d{2})');
     final matches = amtRegex.allMatches(line).toList();
 
     if (matches.isEmpty) return null;
@@ -250,6 +291,17 @@ class BankStatementParserService {
 
   static DateTime? _parseStatementDate(String raw) {
     final cleaned = raw.trim();
+    if (cleaned.isEmpty) return null;
+
+    // Normalize casing for months (e.g. OCT -> Oct, oct -> Oct)
+    String normalized = cleaned;
+    final alphaMonthMatch = RegExp(r'[a-zA-Z]{3}').firstMatch(cleaned);
+    if (alphaMonthMatch != null) {
+      final m = alphaMonthMatch.group(0)!;
+      final formattedM = m[0].toUpperCase() + m.substring(1).toLowerCase();
+      normalized = normalized.replaceRange(alphaMonthMatch.start, alphaMonthMatch.end, formattedM);
+    }
+
     final formats = [
       'dd/MM/yyyy',
       'dd-MM-yyyy',
@@ -266,7 +318,7 @@ class BankStatementParserService {
 
     for (final f in formats) {
       try {
-        return DateFormat(f).parseStrict(cleaned);
+        return DateFormat(f).parseStrict(normalized);
       } catch (_) {}
     }
 

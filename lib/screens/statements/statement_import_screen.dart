@@ -117,12 +117,16 @@ class _StatementImportScreenState extends State<StatementImportScreen> {
       setState(() => _isProcessing = false);
 
       // 3. Navigate to Review Screen
+      final resolvedBank = (_selectedBank == 'Auto-Detect' && rawTransactions.isNotEmpty)
+          ? rawTransactions.first.bankName
+          : _selectedBank;
+
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => StatementReviewScreen(
             result: dedupResult,
-            selectedBank: _selectedBank,
+            selectedBank: resolvedBank,
             fileName: _selectedFile?.name ?? 'Statement.pdf',
           ),
         ),

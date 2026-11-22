@@ -73,15 +73,17 @@ class StatementDeduplicationService {
 
   /// Check for matching expense by Exact Amount and Date (within +/- 1 day buffer)
   Expense? _findMatchingExpense(StatementTransaction txn, List<Expense> expenses) {
+    final txnCalendarDay = DateTime(txn.date.year, txn.date.month, txn.date.day);
     for (final exp in expenses) {
       // 1. Amount match (allowing 0.01 float tolerance)
       if ((exp.amount - txn.amount).abs() < 0.01) {
         // 2. Date match
         final expDate = _parseDateSafe(exp.date);
         if (expDate != null) {
-          final diffDays = txn.date.difference(expDate).inDays.abs();
-          // Match same day or +/- 1 day clearing window
-          if (diffDays <= 1 && txn.date.year == expDate.year && txn.date.month == expDate.month) {
+          final expCalendarDay = DateTime(expDate.year, expDate.month, expDate.day);
+          final diffDays = txnCalendarDay.difference(expCalendarDay).inDays.abs();
+          // Match same day or +/- 1 day clearing window (safely handles month/year boundaries)
+          if (diffDays <= 1) {
             return exp;
           }
         }
@@ -92,14 +94,17 @@ class StatementDeduplicationService {
 
   /// Check for matching income by Exact Amount and Date (within +/- 1 day buffer)
   ExtraCredit? _findMatchingCredit(StatementTransaction txn, List<ExtraCredit> credits) {
+    final txnCalendarDay = DateTime(txn.date.year, txn.date.month, txn.date.day);
     for (final cred in credits) {
       // 1. Amount match
       if ((cred.amount - txn.amount).abs() < 0.01) {
         // 2. Date match
         final credDate = _parseDateSafe(cred.date);
         if (credDate != null) {
-          final diffDays = txn.date.difference(credDate).inDays.abs();
-          if (diffDays <= 1 && txn.date.year == credDate.year && txn.date.month == credDate.month) {
+          final credCalendarDay = DateTime(credDate.year, credDate.month, credDate.day);
+          final diffDays = txnCalendarDay.difference(credCalendarDay).inDays.abs();
+          // Match same day or +/- 1 day clearing window (safely handles month/year boundaries)
+          if (diffDays <= 1) {
             return cred;
           }
         }

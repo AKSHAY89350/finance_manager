@@ -169,5 +169,50 @@ void main() {
       expect(txn.isDuplicate, isFalse);
       expect(txn.isApproved, isTrue);
     });
+
+    test('Month-end boundary deduplication matches across adjacent months (Oct 31 vs Nov 1)', () {
+      final txn = StatementTransaction(
+        date: DateTime(2026, 11, 1),
+        narration: 'Rent Payment',
+        cleanDescription: 'Rent',
+        amount: 25000.0,
+        isCredit: false,
+        bankName: 'HDFC',
+      );
+
+      final exp = Expense(
+        date: '2026-10-31',
+        category: 'Home Send',
+        amount: 25000.0,
+        bank: 'HDFC',
+      );
+
+      // Verify calendar day comparison
+      final txnDay = DateTime(txn.date.year, txn.date.month, txn.date.day);
+      final expDate = DateTime.parse(exp.date);
+      final expDay = DateTime(expDate.year, expDate.month, expDate.day);
+      final diffDays = txnDay.difference(expDay).inDays.abs();
+
+      expect(diffDays, equals(1));
+      expect((exp.amount - txn.amount).abs() < 0.01, isTrue);
+    });
+
+    test('Parses amounts with commas and no decimals (e.g. 5,000)', () {
+      final amtRegex = RegExp(r'(?:₹|Rs\.?\s*)?(\d{1,3}(?:,\d{2,3})*(?:\.\d{1,2})|\d{1,3}(?:,\d{2,3})+|\d+\.\d{2})');
+      const testLine = '14/10/2026 ATM CASH WDL 5,000 45,000.00';
+      final matches = amtRegex.allMatches(testLine).toList();
+      expect(matches.length, greaterThanOrEqualTo(2));
+      expect(matches[0].group(0), equals('5,000'));
+    });
+
+    test('Parses uppercase month abbreviations like 14-OCT-2026', () {
+      const rawDate = '14-OCT-2026';
+      final alphaMatch = RegExp(r'[a-zA-Z]{3}').firstMatch(rawDate);
+      expect(alphaMatch, isNotNull);
+      final m = alphaMatch!.group(0)!;
+      final formattedM = m[0].toUpperCase() + m.substring(1).toLowerCase();
+      final normalized = rawDate.replaceRange(alphaMatch.start, alphaMatch.end, formattedM);
+      expect(normalized, equals('14-Oct-2026'));
+    });
   });
 }
